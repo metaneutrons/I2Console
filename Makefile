@@ -14,8 +14,7 @@ flash: build
 	@echo "Looking for I2Console device (VID:PID = $(VID):$(PID))..."
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		CDC_PORT=$$(ioreg -r -c IOUSBHostDevice -l | \
-			grep -B 5 "idVendor\" = $(VID_DEC)" | \
-			grep -A 10 "idProduct\" = $(PID_DEC)" | \
+			awk '/metaneutrons/,/^  \|   \}/' | \
 			grep "IOTTYSuffix" | tail -1 | sed 's/.*"\([0-9]*\)".*/\1/'); \
 		if [ -n "$$CDC_PORT" ]; then \
 			CDC_PATH="/dev/tty.usbmodem$$CDC_PORT"; \
