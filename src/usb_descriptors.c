@@ -1,8 +1,8 @@
 #include "tusb.h"
 #include "pico/unique_id.h"
 
-#define USB_VID 0x2E8A
-#define USB_PID 0x000A
+#define USB_VID 0x1209
+#define USB_PID 0xFABF
 
 tusb_desc_device_t const desc_device = {
     .bLength = sizeof(tusb_desc_device_t),
