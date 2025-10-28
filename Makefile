@@ -20,7 +20,9 @@ flash: build
 			CDC_PATH="/dev/tty.usbmodem$$CDC_PORT"; \
 			echo "Found I2Console at $$CDC_PATH"; \
 			echo "Sending bootloader command..."; \
-			echo "BOOTLOADER" > $$CDC_PATH; \
+			printf "BOOTLOADER\n" > $$CDC_PATH; \
+			sleep 3; \
+			echo "Waiting for bootloader mode..."; \
 			sleep 2; \
 		else \
 			echo "I2Console not found."; \
@@ -39,7 +41,7 @@ flash: build
 			if [ -n "$$TTY" ]; then \
 				echo "Found I2Console at $$TTY"; \
 				echo "Sending bootloader command..."; \
-				echo "BOOTLOADER" > $$TTY; \
+				printf "BOOTLOADER\n" > $$TTY; \
 				sleep 2; \
 			fi; \
 		else \
