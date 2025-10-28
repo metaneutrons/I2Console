@@ -2,6 +2,8 @@
 
 VID := 1209
 PID := FABF
+VID_DEC := 4617
+PID_DEC := 64191
 
 build:
 	@mkdir -p build
@@ -10,24 +12,47 @@ build:
 
 flash: build
 	@echo "Looking for I2Console device (VID:PID = $(VID):$(PID))..."
-	@CDC_PORT=$$(system_profiler SPUSBDataType 2>/dev/null | \
-		grep -B 10 "Vendor ID: 0x$(VID)" | \
-		grep -A 10 "Product ID: 0x$(PID)" | \
-		grep "Serial Number:" | head -1 | awk '{print $$3}' | \
-		xargs -I {} sh -c 'ls /dev/tty.usbmodem* 2>/dev/null | head -2 | tail -1'); \
-	if [ -n "$$CDC_PORT" ]; then \
-		echo "Found I2Console at $$CDC_PORT"; \
-		echo "Sending bootloader command..."; \
-		echo "BOOTLOADER" > $$CDC_PORT; \
-		sleep 2; \
-	else \
-		echo "I2Console not found. Please enter bootloader mode manually:"; \
-		echo "  1. Hold BOOTSEL button"; \
-		echo "  2. Connect USB"; \
-		echo "  3. Release BOOTSEL"; \
-		echo ""; \
-		echo "Press Enter when ready..."; \
-		read dummy; \
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		CDC_PORT=$$(ioreg -r -c IOUSBHostDevice -l | \
+			grep -B 5 "idVendor\" = $(VID_DEC)" | \
+			grep -A 10 "idProduct\" = $(PID_DEC)" | \
+			grep "IOTTYSuffix" | tail -1 | sed 's/.*"\([0-9]*\)".*/\1/'); \
+		if [ -n "$$CDC_PORT" ]; then \
+			CDC_PATH="/dev/tty.usbmodem$$CDC_PORT"; \
+			echo "Found I2Console at $$CDC_PATH"; \
+			echo "Sending bootloader command..."; \
+			echo "BOOTLOADER" > $$CDC_PATH; \
+			sleep 2; \
+		else \
+			echo "I2Console not found."; \
+			echo "Please enter bootloader mode manually:"; \
+			echo "  1. Hold BOOTSEL button"; \
+			echo "  2. Connect USB"; \
+			echo "  3. Release BOOTSEL"; \
+			echo ""; \
+			echo "Press Enter when ready..."; \
+			read dummy; \
+		fi; \
+	elif [ "$$(uname)" = "Linux" ]; then \
+		CDC_PORT=$$(lsusb -d $(VID):$(PID) 2>/dev/null | head -1); \
+		if [ -n "$$CDC_PORT" ]; then \
+			TTY=$$(ls /dev/ttyACM* 2>/dev/null | tail -1); \
+			if [ -n "$$TTY" ]; then \
+				echo "Found I2Console at $$TTY"; \
+				echo "Sending bootloader command..."; \
+				echo "BOOTLOADER" > $$TTY; \
+				sleep 2; \
+			fi; \
+		else \
+			echo "I2Console not found."; \
+			echo "Please enter bootloader mode manually:"; \
+			echo "  1. Hold BOOTSEL button"; \
+			echo "  2. Connect USB"; \
+			echo "  3. Release BOOTSEL"; \
+			echo ""; \
+			echo "Press Enter when ready..."; \
+			read dummy; \
+		fi; \
 	fi; \
 	echo "Flashing firmware..."; \
 	picotool load build/I2Console.uf2 && \
