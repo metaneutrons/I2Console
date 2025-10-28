@@ -6,6 +6,7 @@
 #include "usb_cdc.h"
 #include "flash_config.h"
 #include "lcd_ui.h"
+#include "log.h"
 
 #define TX_BUFFER_SIZE 256
 #define RX_BUFFER_SIZE 1024
@@ -22,7 +23,7 @@ int main(void) {
     
     // Enable watchdog
     if (watchdog_caused_reboot()) {
-        // Log reboot reason if needed
+        // Will log after USB init
     }
     watchdog_enable(WATCHDOG_TIMEOUT_MS, 1);
     
@@ -35,8 +36,26 @@ int main(void) {
     
     // Initialize peripherals
     usb_cdc_init();
+    log_init();
+    
+    // Wait for USB to stabilize
+    sleep_ms(1000);
+    
+    LOG_INFO("I2Console starting...");
+    LOG_INFO("Firmware version: 0x%02X", 0x01);
+    LOG_INFO("I2C address: 0x%02X", flash_config_get_i2c_address());
+    
+    if (watchdog_caused_reboot()) {
+        LOG_WARN("System recovered from watchdog reset");
+    }
+    
     i2c_slave_init(&tx_buffer, &rx_buffer);
+    LOG_INFO("I2C slave initialized on GPIO28/29");
+    
     lcd_ui_init();
+    LOG_INFO("LCD initialized");
+    
+    LOG_INFO("System ready");
     
     uint32_t last_ui_update = 0;
     
@@ -46,11 +65,16 @@ int main(void) {
         // USB CDC task
         usb_cdc_task();
         
+        // Check for bootloader command
+        usb_cdc_check_bootloader_cmd();
+        
         // Transfer data from TX buffer to USB-CDC
         if (usb_cdc_connected()) {
             uint8_t data;
-            while (circular_buffer_pop(&tx_buffer, &data)) {
+            int count = 0;
+            while (circular_buffer_pop(&tx_buffer, &data) && count < 64) {
                 usb_cdc_write(&data, 1);
+                count++;
             }
         }
         
@@ -79,9 +103,6 @@ int main(void) {
                 total_errors
             );
         }
-        
-        // Check for bootloader entry (optional: via special I2C command)
-        // This enables USB firmware update support
         
         tight_loop_contents();
     }

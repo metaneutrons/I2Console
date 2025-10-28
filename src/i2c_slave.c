@@ -1,5 +1,6 @@
 #include "i2c_slave.h"
 #include "flash_config.h"
+#include "log.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"

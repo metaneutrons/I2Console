@@ -20,6 +20,7 @@ add_executable(I2Console
     src/flash_config.c
     src/lcd_driver.c
     src/lcd_ui.c
+    src/log.c
 )
 
 target_include_directories(I2Console PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)

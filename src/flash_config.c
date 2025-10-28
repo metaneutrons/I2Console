@@ -1,4 +1,5 @@
 #include "flash_config.h"
+#include "log.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include <string.h>
@@ -14,6 +15,9 @@ void flash_config_init(void) {
         current_config.i2c_address = 0x37;
         current_config.clock_stretch_enable = 0;
         flash_config_save(&current_config);
+        LOG_INFO("Flash config initialized with defaults");
+    } else {
+        LOG_DEBUG("Flash config loaded: addr=0x%02X", current_config.i2c_address);
     }
 }
 
@@ -39,6 +43,7 @@ uint8_t flash_config_get_i2c_address(void) {
 }
 
 void flash_config_set_i2c_address(uint8_t address) {
+    LOG_INFO("I2C address changed: 0x%02X -> 0x%02X", current_config.i2c_address, address);
     current_config.i2c_address = address;
     flash_config_save(&current_config);
 }

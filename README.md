@@ -9,13 +9,16 @@ I2Console provides a robust console interface over I2C when UART is not availabl
 ## Features
 
 - **I2C Slave Interface**: Configurable address (default 0x37) on GPIO28 (SDA) and GPIO29 (SCL)
-- **USB-CDC Device**: Standard USB serial port for console I/O
+- **Dual USB-CDC Interfaces**: 
+  - CDC0: Console data (I2C ↔ USB)
+  - CDC1: Debug logging and bootloader control
 - **Dual Buffers**: 256-byte TX buffer (I2C→USB) and 1024-byte RX buffer (USB→I2C)
 - **Visual Display**: 1.14" LCD with real-time statistics and status
 - **Flash Persistence**: Configuration stored in flash memory
 - **Watchdog Timer**: Automatic recovery from hangs
-- **USB Firmware Update**: Compatible with picotool
+- **USB Firmware Update**: No BOOTSEL button needed - use bootloader command
 - **Drop-Oldest Policy**: Prevents buffer deadlocks
+- **Enterprise Logging**: Timestamped debug logs on CDC1
 
 ## Hardware Requirements
 
@@ -97,6 +100,36 @@ picotool reboot
 1. Hold BOOTSEL button while connecting USB
 2. Drag `I2Console.uf2` to RPI-RP2 drive
 3. Device will reboot automatically
+
+### Using USB Bootloader Command (No BOOTSEL button!)
+
+```bash
+# Connect to debug CDC interface (usually /dev/ttyACM1 or COM port +1)
+echo "BOOTLOADER" > /dev/ttyACM1
+
+# Then flash with picotool
+picotool load I2Console.uf2
+picotool reboot
+```
+
+## Debug Logging
+
+Connect to the second CDC interface (CDC1) to see debug logs:
+
+```bash
+# macOS/Linux
+screen /dev/ttyACM1 115200
+
+# Or use any serial terminal
+minicom -D /dev/ttyACM1
+```
+
+Log output includes:
+- System startup messages
+- I2C address changes
+- Configuration updates
+- Watchdog reset notifications
+- Error conditions
 
 ## LCD Display
 

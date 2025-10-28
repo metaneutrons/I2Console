@@ -26,19 +26,25 @@ uint8_t const *tud_descriptor_device_cb(void) {
 }
 
 enum {
-    ITF_NUM_CDC = 0,
-    ITF_NUM_CDC_DATA,
+    ITF_NUM_CDC_0 = 0,
+    ITF_NUM_CDC_0_DATA,
+    ITF_NUM_CDC_1,
+    ITF_NUM_CDC_1_DATA,
     ITF_NUM_TOTAL
 };
 
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
-#define EPNUM_CDC_NOTIF 0x81
-#define EPNUM_CDC_OUT 0x02
-#define EPNUM_CDC_IN 0x82
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN * 2)
+#define EPNUM_CDC_0_NOTIF 0x81
+#define EPNUM_CDC_0_OUT 0x02
+#define EPNUM_CDC_0_IN 0x82
+#define EPNUM_CDC_1_NOTIF 0x83
+#define EPNUM_CDC_1_OUT 0x04
+#define EPNUM_CDC_1_IN 0x84
 
 uint8_t const desc_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 5, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
 };
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
@@ -70,6 +76,18 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
             uint8_t byte = id.id[i];
             _desc_str[1 + chr_count++] = "0123456789ABCDEF"[byte >> 4];
             _desc_str[1 + chr_count++] = "0123456789ABCDEF"[byte & 0x0F];
+        }
+    } else if (index == 4) {
+        const char *str = "I2Console Data";
+        chr_count = strlen(str);
+        for (uint8_t i = 0; i < chr_count; i++) {
+            _desc_str[1 + i] = str[i];
+        }
+    } else if (index == 5) {
+        const char *str = "I2Console Debug";
+        chr_count = strlen(str);
+        for (uint8_t i = 0; i < chr_count; i++) {
+            _desc_str[1 + i] = str[i];
         }
     } else {
         if (!(index < sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))) return NULL;
