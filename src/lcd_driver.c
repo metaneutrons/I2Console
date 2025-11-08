@@ -1,37 +1,12 @@
 #include "lcd_driver.h"
+#include "fonts.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
+#include "hardware/pwm.h"
 #include "pico/stdlib.h"
 
-static const uint8_t font_5x7[][5] = {
-    {0x00, 0x00, 0x00, 0x00, 0x00}, // space
-    {0x00, 0x00, 0x5F, 0x00, 0x00}, // !
-    {0x00, 0x07, 0x00, 0x07, 0x00}, // "
-    {0x14, 0x7F, 0x14, 0x7F, 0x14}, // #
-    {0x24, 0x2A, 0x7F, 0x2A, 0x12}, // $
-    {0x23, 0x13, 0x08, 0x64, 0x62}, // %
-    {0x36, 0x49, 0x55, 0x22, 0x50}, // &
-    {0x00, 0x05, 0x03, 0x00, 0x00}, // '
-    {0x00, 0x1C, 0x22, 0x41, 0x00}, // (
-    {0x00, 0x41, 0x22, 0x1C, 0x00}, // )
-    {0x14, 0x08, 0x3E, 0x08, 0x14}, // *
-    {0x08, 0x08, 0x3E, 0x08, 0x08}, // +
-    {0x00, 0x50, 0x30, 0x00, 0x00}, // ,
-    {0x08, 0x08, 0x08, 0x08, 0x08}, // -
-    {0x00, 0x60, 0x60, 0x00, 0x00}, // .
-    {0x20, 0x10, 0x08, 0x04, 0x02}, // /
-    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
-    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
-    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
-    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
-    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
-    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
-    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
-    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
-    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
-    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
-    {0x00, 0x36, 0x36, 0x00, 0x00}, // :
-};
+#define LCD_X_OFFSET 40
+#define LCD_Y_OFFSET 53
 
 static inline void lcd_write_cmd(uint8_t cmd) {
     gpio_put(LCD_DC_PIN, 0);
@@ -48,6 +23,11 @@ static inline void lcd_write_data(uint8_t data) {
 }
 
 static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    x0 += LCD_X_OFFSET;
+    x1 += LCD_X_OFFSET;
+    y0 += LCD_Y_OFFSET;
+    y1 += LCD_Y_OFFSET;
+    
     lcd_write_cmd(0x2A);
     lcd_write_data(x0 >> 8);
     lcd_write_data(x0 & 0xFF);
@@ -64,7 +44,7 @@ static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
 }
 
 void lcd_init(void) {
-    spi_init(spi1, 20000000);
+    spi_init(spi1, 30000000);
     gpio_set_function(LCD_CLK_PIN, GPIO_FUNC_SPI);
     gpio_set_function(LCD_MOSI_PIN, GPIO_FUNC_SPI);
     
@@ -72,6 +52,7 @@ void lcd_init(void) {
     gpio_set_dir(LCD_DC_PIN, GPIO_OUT);
     gpio_init(LCD_CS_PIN);
     gpio_set_dir(LCD_CS_PIN, GPIO_OUT);
+    gpio_put(LCD_CS_PIN, 1);  // CS high (inactive)
     gpio_init(LCD_RST_PIN);
     gpio_set_dir(LCD_RST_PIN, GPIO_OUT);
     
@@ -158,9 +139,11 @@ void lcd_init(void) {
     lcd_write_cmd(0x21);
     lcd_write_cmd(0x29);
     
-    gpio_init(LCD_BL_PIN);
-    gpio_set_dir(LCD_BL_PIN, GPIO_OUT);
-    gpio_put(LCD_BL_PIN, 1);
+    gpio_set_function(LCD_BL_PIN, GPIO_FUNC_PWM);
+    uint slice = pwm_gpio_to_slice_num(LCD_BL_PIN);
+    pwm_set_wrap(slice, 100);
+    pwm_set_chan_level(slice, pwm_gpio_to_channel(LCD_BL_PIN), 90);
+    pwm_set_enabled(slice, true);
 }
 
 void lcd_clear(uint16_t color) {
@@ -185,15 +168,17 @@ void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t colo
 }
 
 void lcd_draw_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg) {
-    if (c < 32 || c > 90) c = 32;
-    const uint8_t *glyph = font_5x7[c - 32];
+    if (c < ' ' || c > '~') c = ' ';
     
-    for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 7; j++) {
-            if (glyph[i] & (1 << j)) {
-                lcd_fill_rect(x + i, y + j, 1, 1, color);
+    const uint8_t *glyph = &Font16.table[(c - ' ') * Font16.Height * ((Font16.Width + 7) / 8)];
+    
+    for (uint16_t row = 0; row < Font16.Height; row++) {
+        for (uint16_t col = 0; col < Font16.Width; col++) {
+            uint8_t byte = glyph[row * ((Font16.Width + 7) / 8) + col / 8];
+            if (byte & (0x80 >> (col % 8))) {
+                lcd_fill_rect(x + col, y + row, 1, 1, color);
             } else {
-                lcd_fill_rect(x + i, y + j, 1, 1, bg);
+                lcd_fill_rect(x + col, y + row, 1, 1, bg);
             }
         }
     }
@@ -202,10 +187,11 @@ void lcd_draw_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg) 
 void lcd_draw_string(uint16_t x, uint16_t y, const char *str, uint16_t color, uint16_t bg) {
     while (*str) {
         lcd_draw_char(x, y, *str++, color, bg);
-        x += 6;
+        x += Font16.Width;
     }
 }
 
 void lcd_set_backlight(uint8_t brightness) {
-    gpio_put(LCD_BL_PIN, brightness > 0 ? 1 : 0);
+    uint slice = pwm_gpio_to_slice_num(LCD_BL_PIN);
+    pwm_set_chan_level(slice, pwm_gpio_to_channel(LCD_BL_PIN), brightness);
 }

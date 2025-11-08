@@ -17,7 +17,6 @@
 #define REG_DATA_START 0x20
 
 #define DEVICE_ID 0x12C0
-#define FW_VERSION 0x01
 
 typedef struct {
     uint32_t tx_bytes;

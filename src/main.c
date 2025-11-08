@@ -7,6 +7,7 @@
 #include "flash_config.h"
 #include "lcd_ui.h"
 #include "log.h"
+#include "version.h"
 
 #define TX_BUFFER_SIZE 256
 #define RX_BUFFER_SIZE 1024
@@ -42,7 +43,7 @@ int main(void) {
     sleep_ms(1000);
     
     LOG_INFO("I2Console starting...");
-    LOG_INFO("Firmware version: 0x%02X", 0x01);
+    LOG_INFO("Firmware version: %s", FW_VERSION);
     LOG_INFO("I2C address: 0x%02X", flash_config_get_i2c_address());
     
     if (watchdog_caused_reboot()) {

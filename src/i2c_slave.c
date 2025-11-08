@@ -1,11 +1,31 @@
 #include "i2c_slave.h"
 #include "flash_config.h"
 #include "log.h"
+#include "version.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
 #include "hardware/regs/i2c.h"
 #include <string.h>
+#include <stdio.h>
+
+static uint8_t fw_version_byte = 0x01;
+static char version_short[16] = {0};
+
+static void parse_version(void) {
+    const char *v = FW_VERSION;
+    // Skip 'v' prefix if present
+    if (v[0] == 'v') v++;
+    
+    // Copy until we hit '-g' (git hash marker) or end
+    int i = 0;
+    while (v[i] && i < 15) {
+        if (v[i] == '-' && v[i+1] == 'g') break;
+        version_short[i] = v[i];
+        i++;
+    }
+    version_short[i] = '\0';
+}
 
 static circular_buffer_t *tx_buffer;
 static circular_buffer_t *rx_buffer;
@@ -48,7 +68,10 @@ static void i2c0_irq_handler(void) {
         } else if (current_register == REG_DEVICE_ID + 1) {
             data = DEVICE_ID & 0xFF;
         } else if (current_register == REG_FW_VERSION) {
-            data = FW_VERSION;
+            data = fw_version_byte;
+        } else if (current_register >= 0x04 && current_register < 0x04 + sizeof(version_short)) {
+            // Version string registers 0x04-0x13
+            data = version_short[current_register - 0x04];
         } else if (current_register == REG_I2C_ADDRESS) {
             data = flash_config_get_i2c_address();
         } else if (current_register == REG_CLOCK_STRETCH) {
@@ -81,6 +104,8 @@ static void i2c0_irq_handler(void) {
 void i2c_slave_init(circular_buffer_t *tx_buf, circular_buffer_t *rx_buf) {
     tx_buffer = tx_buf;
     rx_buffer = rx_buf;
+    
+    parse_version();
     
     gpio_init(I2C_SLAVE_SDA_PIN);
     gpio_set_function(I2C_SLAVE_SDA_PIN, GPIO_FUNC_I2C);

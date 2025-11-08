@@ -11,7 +11,7 @@
 #define LCD_CLK_PIN 10
 #define LCD_MOSI_PIN 11
 #define LCD_RST_PIN 12
-#define LCD_BL_PIN 25
+#define LCD_BL_PIN 13
 
 #define COLOR_BLACK 0x0000
 #define COLOR_WHITE 0xFFFF

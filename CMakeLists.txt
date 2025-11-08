@@ -9,6 +9,26 @@ project(I2Console C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Get git version
+execute_process(
+    COMMAND git describe --tags --always --dirty
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(NOT GIT_VERSION)
+    set(GIT_VERSION "unknown")
+endif()
+
+# Generate version.h
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/version.h
+    @ONLY
+)
+
 pico_sdk_init()
 
 add_executable(I2Console
@@ -21,14 +41,19 @@ add_executable(I2Console
     src/lcd_driver.c
     src/lcd_ui.c
     src/log.c
+    src/font16.c
 )
 
-target_include_directories(I2Console PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
+target_include_directories(I2Console PRIVATE 
+    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_BINARY_DIR}/generated
+)
 
 target_link_libraries(I2Console
     pico_stdlib
     hardware_i2c
     hardware_spi
+    hardware_pwm
     hardware_flash
     hardware_sync
     hardware_watchdog

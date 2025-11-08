@@ -1,5 +1,7 @@
 # I2Console
 
+[![ESP Component Registry](https://components.espressif.com/components/metaneutrons/i2console/badge.svg)](https://components.espressif.com/components/metaneutrons/i2console)
+
 Enterprise-grade I2C to USB-CDC console bridge for RP2350-GEEK
 
 ## Overview

@@ -5,6 +5,7 @@
 
 static uint8_t cmd_buffer[64];
 static int cmd_len = 0;
+static bool last_dtr_state = false;
 
 void usb_cdc_init(void) {
     tusb_init();
@@ -33,6 +34,18 @@ int usb_cdc_write(const uint8_t *buffer, int len) {
 }
 
 void usb_cdc_check_bootloader_cmd(void) {
+    // Check DTR on debug interface
+    if (tud_cdc_n_connected(CDC_ITF_DEBUG)) {
+        bool dtr = tud_cdc_n_get_line_state(CDC_ITF_DEBUG) & 0x01;
+        
+        // Detect DTR falling edge (1->0 transition)
+        if (last_dtr_state && !dtr) {
+            reset_usb_boot(0, 0);
+        }
+        last_dtr_state = dtr;
+    }
+    
+    // Also check for text command
     if (!tud_cdc_n_available(CDC_ITF_DEBUG)) {
         return;
     }
