@@ -4,11 +4,13 @@
  */
 
 #include "i2console.h"
+#include "bsp.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include <string.h>
+#include <stdarg.h>
 
 static const char *TAG = "i2console";
 
@@ -25,7 +27,7 @@ static const char *TAG = "i2console";
 
 // Component state
 static struct {
-    i2c_port_t port;
+    i2c_master_dev_handle_t dev_handle;
     uint8_t addr;
     bool connected;
     QueueHandle_t tx_queue;
@@ -46,20 +48,7 @@ typedef struct {
  */
 static esp_err_t i2console_read_reg(uint8_t reg, uint8_t *data, size_t len)
 {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (i2console.addr << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, reg, true);
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (i2console.addr << 1) | I2C_MASTER_READ, true);
-    if (len > 1) {
-        i2c_master_read(cmd, data, len - 1, I2C_MASTER_ACK);
-    }
-    i2c_master_read_byte(cmd, data + len - 1, I2C_MASTER_NACK);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(i2console.port, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-    return ret;
+    return i2c_master_transmit_receive(i2console.dev_handle, &reg, 1, data, len, 100);
 }
 
 /**
@@ -67,15 +56,10 @@ static esp_err_t i2console_read_reg(uint8_t reg, uint8_t *data, size_t len)
  */
 static esp_err_t i2console_write_data(const uint8_t *data, size_t len)
 {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (i2console.addr << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, REG_DATA_START, true);
-    i2c_master_write(cmd, data, len, true);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(i2console.port, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-    return ret;
+    uint8_t tx_buffer[len + 1];
+    tx_buffer[0] = REG_DATA_START;
+    memcpy(&tx_buffer[1], data, len);
+    return i2c_master_transmit(i2console.dev_handle, tx_buffer, len + 1, 100);
 }
 
 /**
@@ -129,10 +113,16 @@ static int i2console_vprintf(const char *fmt, va_list args)
     return vprintf(fmt, args);
 }
 
-esp_err_t i2console_init(i2c_port_t port, uint8_t addr)
+esp_err_t i2console_init(uint8_t addr)
 {
-    i2console.port = port;
     i2console.addr = addr;
+    
+    // Add I2Console device to BSP I2C bus
+    esp_err_t ret = bsp_i2c_add_device(addr, 400000, &i2console.dev_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to add I2Console device: %s", esp_err_to_name(ret));
+        return ret;
+    }
     
     // Detect device
     if (!i2console_detect()) {

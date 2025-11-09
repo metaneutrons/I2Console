@@ -32,7 +32,7 @@ I2Console provides a robust console interface over I2C when UART is not availabl
 
 | Register | Access | Description |
 |----------|--------|-------------|
-| 0x00-0x01 | R | Device ID (0x12C0) |
+| 0x00 | R | Device ID (0x12C0, 16-bit) |
 | 0x01 | R | Firmware version |
 | 0x02 | R/W | I2C address configuration |
 | 0x03 | R/W | Clock stretching enable (bit 0) |
@@ -47,7 +47,7 @@ I2Console provides a robust console interface over I2C when UART is not availabl
 
 ```python
 # Read device ID to verify I2Console presence
-device_id = i2c.read_word(0x37, 0x00)  # Should return 0x12C0
+device_id = i2c.read_word(0x37, 0x00)  # Reads 2 bytes from register 0x00, returns 0x12C0
 ```
 
 ### Writing to Console (I2C → USB-CDC)

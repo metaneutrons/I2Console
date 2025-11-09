@@ -9,7 +9,7 @@
 #pragma once
 
 #include "esp_err.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,12 +23,12 @@ extern "C" {
  * 
  * Probes I2C bus for I2Console device and registers as ESP-IDF log output.
  * If device not found, silently disables (no error).
+ * Uses BSP I2C bus (must be initialized first).
  * 
- * @param port I2C port number (must be already initialized)
  * @param addr I2C slave address (default: 0x37)
  * @return ESP_OK on success, ESP_ERR_NOT_FOUND if device not detected
  */
-esp_err_t i2console_init(i2c_port_t port, uint8_t addr);
+esp_err_t i2console_init(uint8_t addr);
 
 /**
  * @brief Write data to I2Console

@@ -64,9 +64,15 @@ static void i2c0_irq_handler(void) {
         uint8_t data = 0;
         
         if (current_register == REG_DEVICE_ID) {
-            data = (DEVICE_ID >> 8) & 0xFF;
-        } else if (current_register == REG_DEVICE_ID + 1) {
-            data = DEVICE_ID & 0xFF;
+            // Return device ID as 2-byte sequence from single register
+            static uint8_t device_id_byte = 0;
+            if (device_id_byte == 0) {
+                data = (DEVICE_ID >> 8) & 0xFF; // High byte first
+                device_id_byte = 1;
+            } else {
+                data = DEVICE_ID & 0xFF; // Low byte second
+                device_id_byte = 0; // Reset for next read sequence
+            }
         } else if (current_register == REG_FW_VERSION) {
             data = fw_version_byte;
         } else if (current_register >= 0x04 && current_register < 0x04 + sizeof(version_short)) {
