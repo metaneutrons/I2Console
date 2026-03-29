@@ -5,7 +5,7 @@
 #include <stdarg.h>
 #include <string.h>
 
-#define LOG_CDC_ITF 1
+#define LOG_CDC_ITF 2
 #define LOG_BUFFER_SIZE 256
 
 static log_level_t current_level = LOG_INFO;

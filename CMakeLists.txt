@@ -42,6 +42,7 @@ add_executable(I2Console
     src/lcd_ui.c
     src/log.c
     src/font16.c
+    src/button.c
 )
 
 target_include_directories(I2Console PRIVATE 

@@ -30,21 +30,28 @@ enum {
     ITF_NUM_CDC_0_DATA,
     ITF_NUM_CDC_1,
     ITF_NUM_CDC_1_DATA,
+    ITF_NUM_CDC_2,
+    ITF_NUM_CDC_2_DATA,
     ITF_NUM_TOTAL
 };
 
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN * 2)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN * 3)
+
 #define EPNUM_CDC_0_NOTIF 0x81
-#define EPNUM_CDC_0_OUT 0x02
-#define EPNUM_CDC_0_IN 0x82
+#define EPNUM_CDC_0_OUT   0x02
+#define EPNUM_CDC_0_IN    0x82
 #define EPNUM_CDC_1_NOTIF 0x83
-#define EPNUM_CDC_1_OUT 0x04
-#define EPNUM_CDC_1_IN 0x84
+#define EPNUM_CDC_1_OUT   0x04
+#define EPNUM_CDC_1_IN    0x84
+#define EPNUM_CDC_2_NOTIF 0x85
+#define EPNUM_CDC_2_OUT   0x06
+#define EPNUM_CDC_2_IN    0x86
 
 uint8_t const desc_configuration[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 5, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_2, 6, EPNUM_CDC_2_NOTIF, 8, EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
 };
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
@@ -60,6 +67,13 @@ char const *string_desc_arr[] = {
 };
 
 static uint16_t _desc_str[32];
+
+static void set_desc_string(const char *str, uint8_t *chr_count) {
+    *chr_count = strlen(str);
+    for (uint8_t i = 0; i < *chr_count; i++) {
+        _desc_str[1 + i] = str[i];
+    }
+}
 
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     (void)langid;
@@ -78,17 +92,11 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
             _desc_str[1 + chr_count++] = "0123456789ABCDEF"[byte & 0x0F];
         }
     } else if (index == 4) {
-        const char *str = "I2Console Data";
-        chr_count = strlen(str);
-        for (uint8_t i = 0; i < chr_count; i++) {
-            _desc_str[1 + i] = str[i];
-        }
+        set_desc_string("I2Console Data", &chr_count);
     } else if (index == 5) {
-        const char *str = "I2Console Debug";
-        chr_count = strlen(str);
-        for (uint8_t i = 0; i < chr_count; i++) {
-            _desc_str[1 + i] = str[i];
-        }
+        set_desc_string("I2Console UART", &chr_count);
+    } else if (index == 6) {
+        set_desc_string("I2Console Debug", &chr_count);
     } else {
         if (!(index < sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))) return NULL;
         const char *str = string_desc_arr[index];
