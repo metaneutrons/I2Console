@@ -86,7 +86,7 @@ void uart_bridge_init(void) {
 }
 
 void uart_bridge_task(void) {
-    bridge_stats.connected = tud_cdc_n_connected(CDC_ITF_UART);
+    bridge_stats.connected = tud_cdc_n_connected(CDC_ITF_UART) || tud_cdc_n_available(CDC_ITF_UART);
 
     // CDC → UART
     if (tud_cdc_n_available(CDC_ITF_UART)) {
@@ -95,11 +95,11 @@ void uart_bridge_task(void) {
         for (uint32_t i = 0; i < count; i++) {
             uart_putc_raw(UART_BRIDGE_INST, buf[i]);
         }
-        bridge_stats.rx_bytes += count;
+        bridge_stats.tx_bytes += count;
     }
 
-    // UART → CDC
-    if (bridge_stats.connected) {
+    // UART → CDC (send if USB is mounted, regardless of DTR)
+    if (tud_mounted()) {
         int count = 0;
         while (uart_is_readable(UART_BRIDGE_INST) && count < 64) {
             uint8_t c = uart_getc(UART_BRIDGE_INST);
@@ -108,7 +108,7 @@ void uart_bridge_task(void) {
         }
         if (count > 0) {
             tud_cdc_n_write_flush(CDC_ITF_UART);
-            bridge_stats.tx_bytes += count;
+            bridge_stats.rx_bytes += count;
         }
     } else {
         // Drain UART when USB not connected
