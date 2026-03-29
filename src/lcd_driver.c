@@ -169,19 +169,30 @@ void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t colo
 
 void lcd_draw_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg) {
     if (c < ' ' || c > '~') c = ' ';
-    
     const uint8_t *glyph = &Font16.table[(c - ' ') * Font16.Height * ((Font16.Width + 7) / 8)];
-    
+
+    lcd_set_window(x, y, x + Font16.Width - 1, y + Font16.Height - 1);
+
+    gpio_put(LCD_DC_PIN, 1);
+    gpio_put(LCD_CS_PIN, 0);
+
+    uint8_t hi_fg = color >> 8, lo_fg = color & 0xFF;
+    uint8_t hi_bg = bg >> 8, lo_bg = bg & 0xFF;
+
     for (uint16_t row = 0; row < Font16.Height; row++) {
         for (uint16_t col = 0; col < Font16.Width; col++) {
             uint8_t byte = glyph[row * ((Font16.Width + 7) / 8) + col / 8];
             if (byte & (0x80 >> (col % 8))) {
-                lcd_fill_rect(x + col, y + row, 1, 1, color);
+                spi_write_blocking(spi1, &hi_fg, 1);
+                spi_write_blocking(spi1, &lo_fg, 1);
             } else {
-                lcd_fill_rect(x + col, y + row, 1, 1, bg);
+                spi_write_blocking(spi1, &hi_bg, 1);
+                spi_write_blocking(spi1, &lo_bg, 1);
             }
         }
     }
+
+    gpio_put(LCD_CS_PIN, 1);
 }
 
 void lcd_draw_string(uint16_t x, uint16_t y, const char *str, uint16_t color, uint16_t bg) {
