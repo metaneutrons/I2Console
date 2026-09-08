@@ -4,3 +4,7 @@ build/
 *.swp
 *.swo
 *~
+
+# agent scratch state, not project content
+.amazonq/
+.claude/

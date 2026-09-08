@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security problems here. Use private vulnerability
+        reporting instead, see SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: The `FW_VERSION` string, or the commit you built from.
+      placeholder: v0.1.0-17-g7e111bc
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - I2C slave interface
+        - USB-CDC console (CDC0)
+        - USB-UART bridge / debug log (CDC1)
+        - LCD display
+        - Flash configuration
+        - Bootloader / flashing
+        - Build
+        - ESP-IDF component
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Hardware and host setup
+      description: Board, I2C master, wiring, host OS and terminal program.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what happened instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands or I2C transfers, in order.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log
+      description: Output from CDC1 around the failure, if you have it.
+      render: text
