@@ -1,0 +1,44 @@
+# Grouping is separated by update kind on purpose. One group with
+# patterns: ['*'] across all kinds bundles breaking changes with harmless
+# bumps, and a single broken dependency then blocks the whole stack. Minor and
+# patch stay bundled, major stays ungrouped so each case arrives on its own.
+#
+# Only two ecosystems exist here. The firmware pulls its dependencies from the
+# pico-sdk submodule and from the ARM toolchain packages installed in CI;
+# neither is a manifest Dependabot can read. The ESP-IDF component declares
+# idf: ">=5.0" in idf_component.yml, and Dependabot has no ESP component
+# registry ecosystem, so that bound is reviewed by hand.
+#
+# Times are UTC.
+
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:15'
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+      # semver-major-days is not permitted for github-actions. If it stands
+      # here, Dependabot rejects the ENTIRE file and not a single update runs
+      # any more, not even a security update.
+    groups:
+      github-actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # pico-sdk. An entry of its own, because the SDK carries the whole build and
+  # a bump changes the firmware, so it should never share a pull request.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '05:20'
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 14

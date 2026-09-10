@@ -1,0 +1,32 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.{toml,yml,yaml,json,jsonc}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Recipe lines must start with a real tab; spaces make make fail with
+# "missing separator".
+[{Makefile,*.mk}]
+indent_style = tab
+indent_size = 4
+
+# Vendored SDK, not ours to reformat.
+[pico-sdk/**]
+charset = unset
+end_of_line = unset
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+max_line_length = unset

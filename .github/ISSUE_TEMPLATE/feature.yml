@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a capability the firmware or the component does not have
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: >
+        If it touches the I2C register map, say which registers and what they
+        return. The map is documented in the README.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      description: >
+        The firmware and the ESP-IDF component are two surfaces onto the same
+        device. Say whether both need it.
+      multiple: true
+      options:
+        - RP2350 firmware
+        - ESP-IDF component
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you considered instead
+      description: Including doing nothing.

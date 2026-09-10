@@ -159,12 +159,18 @@ All configuration is stored in flash and persists across reboots:
 
 ## License
 
-GPL-3.0 - See LICENSE file for details
+Copyright (C) 2025 Metaneutrons
 
-## Author
+GPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
 
-Metaneutrons
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the commit convention and the build
+instructions.
 
 ## Support
 
 For issues and feature requests, visit: https://github.com/metaneutrons/I2Console
+
+Security problems go through private vulnerability reporting instead, see
+[SECURITY.md](SECURITY.md).
