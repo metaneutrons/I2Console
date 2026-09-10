@@ -2,24 +2,10 @@
 
 ## Required Secrets
 
-### IDF_COMPONENT_API_TOKEN
-
-This token is required for publishing the ESP-IDF component to the component registry.
-
-**Setup:**
-
-1. Go to repository Settings → Secrets and variables → Actions
-2. Click "New repository secret"
-3. Name: `IDF_COMPONENT_API_TOKEN`
-4. Value: Your ESP Component Registry API token
-5. Click "Add secret"
-
-**Getting the API Token:**
-
-1. Visit https://components.espressif.com/
-2. Sign in with your account
-3. Go to your profile settings
-4. Generate or copy your API token
+None. The release workflow publishes only GitHub release assets and uses the
+automatically provided token. The ESP Component Registry channel and its
+`IDF_COMPONENT_API_TOKEN` secret were removed when the component was mothballed;
+see issue #6.
 
 ## Workflows
 
@@ -31,8 +17,6 @@ This token is required for publishing the ESP-IDF component to the component reg
 
 **Jobs:**
 - Build I2Console firmware (RP2350)
-- Build ESP-IDF example
-- Validate ESP-IDF component manifest
 
 ### Release Workflow (`release.yml`)
 
@@ -43,7 +27,6 @@ This token is required for publishing the ESP-IDF component to the component reg
 **Jobs:**
 1. Create tag (manual trigger only)
 2. Build firmware and create GitHub release
-3. Publish ESP-IDF component to registry
 
 **Manual Release:**
 
@@ -55,7 +38,6 @@ This will:
 - Create tag `v0.1.0`
 - Build firmware
 - Create GitHub release with artifacts
-- Publish component to ESP registry
 
 **Tag-based Release:**
 

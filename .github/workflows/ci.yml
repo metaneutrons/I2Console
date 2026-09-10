@@ -57,38 +57,6 @@ jobs:
             build/I2Console.elf
             build/I2Console.bin
 
-  build-esp-idf-example:
-    name: Build ESP-IDF Example
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      # Was previously `@v1`, which is a BRANCH in this action's repository,
-      # not a version tag. That is as mutable as @main under a name that looks
-      # pinned.
-      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
-        with:
-          esp_idf_version: v5.3
-          target: esp32
-          path: examples/esp-idf
-
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-        with:
-          name: esp-idf-example
-          path: examples/esp-idf/build/*.bin
-
-  validate-component:
-    name: Validate ESP-IDF Component
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      - name: Check component manifest
-        working-directory: examples/esp-idf/components/i2console
-        run: |
-          python3 -c "import yaml, sys; yaml.safe_load(open('idf_component.yml'))"
-          echo "Component manifest parses"
-
   commit-hygiene:
     name: Commit hygiene
     if: github.event_name == 'pull_request'
@@ -180,7 +148,7 @@ jobs:
   ci-success:
     name: CI Success
     if: always()
-    needs: [build-firmware, build-esp-idf-example, validate-component, commit-hygiene, secrets]
+    needs: [build-firmware, commit-hygiene, secrets]
     runs-on: ubuntu-24.04
     steps:
       - name: Every preceding job must have succeeded or been skipped
