@@ -1,41 +1,55 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # The job name is the check context. Do not rename it without updating the
+  # ruleset, or the required check points at a context nothing produces.
   build-firmware:
     name: Build I2Console Firmware
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
-      
+          # CMakeLists.txt derives the version from `git describe --tags`.
+          # With the default shallow checkout there is no tag in the clone and
+          # FW_VERSION silently degrades to a bare hash.
+          fetch-depth: 0
+
       - name: Install ARM toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential cmake
-      
+
       - name: Build firmware
         run: |
           mkdir build
           cd build
           cmake ..
-          make -j$(nproc)
-      
+          make -j"$(nproc)"
+
       - name: Check build artifacts
         run: |
           ls -lh build/I2Console.uf2
           ls -lh build/I2Console.elf
-      
-      - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v5
+          ls -lh build/I2Console.bin
+
+      - name: Report the version that was built
+        run: cat build/generated/version.h
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: firmware
           path: |
@@ -45,45 +59,132 @@ jobs:
 
   build-esp-idf-example:
     name: Build ESP-IDF Example
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      
-      - name: Setup ESP-IDF
-        uses: espressif/esp-idf-ci-action@v1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Was previously `@v1`, which is a BRANCH in this action's repository,
+      # not a version tag. That is as mutable as @main under a name that looks
+      # pinned.
+      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
         with:
           esp_idf_version: v5.3
           target: esp32
           path: examples/esp-idf
-      
-      - name: Build example
-        run: |
-          cd examples/esp-idf
-          . $IDF_PATH/export.sh
-          idf.py build
-      
-      - name: Upload example artifacts
-        uses: actions/upload-artifact@v5
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: esp-idf-example
           path: examples/esp-idf/build/*.bin
 
   validate-component:
     name: Validate ESP-IDF Component
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      
-      - name: Install component manager
-        run: pip install idf-component-manager
-      
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
       - name: Check component manifest
         working-directory: examples/esp-idf/components/i2console
         run: |
-          echo "Checking idf_component.yml syntax..."
-          python3 -c "import yaml; yaml.safe_load(open('idf_component.yml'))"
-          echo "Component manifest is valid"
+          python3 -c "import yaml, sys; yaml.safe_load(open('idf_component.yml'))"
+          echo "Component manifest parses"
+
+  commit-hygiene:
+    name: Commit hygiene
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Validate lefthook configuration
+        env:
+          LEFTHOOK_VERSION: 2.1.12
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/lefthook \
+            "https://github.com/evilmartians/lefthook/releases/download/v${LEFTHOOK_VERSION}/lefthook_${LEFTHOOK_VERSION}_Linux_x86_64"
+          chmod +x /tmp/lefthook
+          /tmp/lefthook version
+          /tmp/lefthook validate
+
+      - name: Check title, body and every commit
+        # Title and body reach the script exclusively through env, never by
+        # interpolation into the script text: otherwise the pull request title
+        # would be a shell injection vector.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          status=0
+          cc='^((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+|Revert ".+")'
+          # Anchored at the start of the line: by convention a trailer stands on
+          # a line of its own. Without the anchor the rule also fires when a
+          # body merely mentions the forbidden trailer, for instance to describe
+          # a doctor finding, and it then rejects a valid input.
+          ban='^[[:space:]]*co-authored-by:.*(claude|anthropic)|^[[:space:]]*generated with.*claude code'
+
+          # On a squash merge the pull request title becomes the subject line on
+          # main and thereby determines the next version.
+          if ! printf '%s' "$PR_TITLE" | grep -Eq "$cc"; then
+            echo "::error::pull request title does not follow Conventional Commits: $PR_TITLE"
+            status=1
+          fi
+
+          # With squash_merge_commit_message=PR_BODY the body lands in the commit.
+          if printf '%s' "$PR_BODY" | grep -Eiq "$ban"; then
+            echo "::error::the pull request body contains an AI attribution trailer."
+            status=1
+          fi
+
+          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
+            if git log -1 --format=%B "$sha" | grep -Eiq "$ban"; then
+              echo "::error::commit $sha contains an AI attribution trailer."
+              status=1
+            fi
+            email=$(git log -1 --format='%ae%n%ce' "$sha")
+            if printf '%s' "$email" | grep -Fq 'noreply@anthropic.com'; then
+              echo "::error::commit $sha has an Anthropic address as author or committer."
+              status=1
+            fi
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo "::notice::switch this off for good in ~/.claude/settings.json: {\"attribution\":{\"commit\":\"\",\"pr\":\"\"}}"
+            exit 1
+          fi
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      # The pre-push hook scans only the new commits. The full scan over the
+      # history belongs here.
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          # Mandatory since the action's breaking change: without a token it
+          # aborts on every pull request, and with a message about the missing
+          # token rather than about a finding. The automatically generated
+          # token suffices.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The only context that should ever become the required check, so that adding
+  # or removing a job does not break the repository configuration.
+  ci-success:
+    name: CI Success
+    if: always()
+    needs: [build-firmware, build-esp-idf-example, validate-component, commit-hygiene, secrets]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every preceding job must have succeeded or been skipped
+        run: |
+          set -euo pipefail
+          printf '%s\n' '${{ toJSON(needs) }}' |
+            jq -e 'all(.[]; .result == "success" or .result == "skipped")'
