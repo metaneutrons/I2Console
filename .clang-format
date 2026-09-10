@@ -1,0 +1,19 @@
+# Derived from the style the existing sources already use, so that the one-time
+# reformat stays small: 4 spaces, K&R braces, 100 columns as in .editorconfig.
+# Nothing is formatted by this file yet; the pre-commit hook that enforces it is
+# skipped until the reformat has landed. See lefthook.yml.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AlignConsecutiveMacros: Consecutive
+IndentCaseLabels: true
+PointerAlignment: Right
+SortIncludes: Never

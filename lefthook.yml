@@ -1,0 +1,43 @@
+# lefthook for this repository. Hooks are fast feedback, not enforcement:
+# `git commit --no-verify` bypasses all of them, which is why every check here
+# has a counterpart in CI.
+#
+# Installation:
+#   brew install lefthook gitleaks   (or: mise use -g lefthook)
+#   lefthook install
+#
+# The scripts under scripts/hooks/ are manager-independent and work equally
+# under husky, pre-commit or core.hooksPath.
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # {1} is the path to the commit message.
+      run: sh scripts/hooks/check-commit-message.sh {1}
+
+pre-commit:
+  parallel: true
+  commands:
+    staged-guards:
+      run: sh scripts/hooks/check-staged.sh
+    secrets:
+      run: gitleaks git --pre-commit --redact --staged --verbose
+    # Off until the one-time reformat has landed; enabling it before that
+    # rejects every commit, because no file is formatted yet. Set skip to
+    # false in the same pull request that reformats the tree.
+    format:
+      glob: "*.{c,h}"
+      run: clang-format --dry-run --Werror {staged_files}
+      skip: true
+
+pre-push:
+  parallel: false
+  commands:
+    secrets:
+      run: sh scripts/hooks/check-push-secrets.sh
+    # Measured on 10 September 2026 on an Apple Silicon host: a cold build
+    # compiles 93 objects in about 2 seconds with -j8, an incremental no-op
+    # takes about 1 second. That is far below the 30 seconds beyond which a
+    # step belongs in CI only. Re-measure before adding anything to it.
+    build:
+      run: make build
