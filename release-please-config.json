@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "last-release-sha": "bae97dd3964de2811d78c8029caf02e74cee065f",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "I2Console",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "draft": true,
+      "force-tag-creation": true,
+      "include-component-in-tag": false
+    }
+  }
+}
