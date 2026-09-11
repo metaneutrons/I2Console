@@ -57,6 +57,23 @@ jobs:
             build/I2Console.elf
             build/I2Console.bin
 
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install gcovr
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr
+
+      # The coverage floor is hard. The modules under test have no hardware
+      # dependency and are fully exercised, so anything below it means a test
+      # was lost rather than that the target is unrealistic.
+      - name: Run the tests and enforce the coverage floor
+        run: make -C tests coverage
+
   commit-hygiene:
     name: Commit hygiene
     if: github.event_name == 'pull_request'
@@ -148,7 +165,7 @@ jobs:
   ci-success:
     name: CI Success
     if: always()
-    needs: [build-firmware, commit-hygiene, secrets]
+    needs: [build-firmware, unit-tests, commit-hygiene, secrets]
     runs-on: ubuntu-24.04
     steps:
       - name: Every preceding job must have succeeded or been skipped
