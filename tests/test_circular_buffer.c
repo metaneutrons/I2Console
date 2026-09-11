@@ -17,25 +17,25 @@
 static int failures = 0;
 static int checks = 0;
 
-#define CHECK(cond)                                                            \
-    do {                                                                       \
-        checks++;                                                              \
-        if (!(cond)) {                                                         \
-            failures++;                                                        \
-            printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);           \
-        }                                                                      \
+#define CHECK(cond)                                                                                \
+    do {                                                                                           \
+        checks++;                                                                                  \
+        if (!(cond)) {                                                                             \
+            failures++;                                                                            \
+            printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                               \
+        }                                                                                          \
     } while (0)
 
-#define CHECK_EQ(actual, expected)                                             \
-    do {                                                                       \
-        checks++;                                                              \
-        unsigned long a_ = (unsigned long)(actual);                            \
-        unsigned long e_ = (unsigned long)(expected);                          \
-        if (a_ != e_) {                                                        \
-            failures++;                                                        \
-            printf("  FAIL %s:%d: %s is %lu, expected %lu\n", __FILE__,        \
-                   __LINE__, #actual, a_, e_);                                 \
-        }                                                                      \
+#define CHECK_EQ(actual, expected)                                                                 \
+    do {                                                                                           \
+        checks++;                                                                                  \
+        unsigned long a_ = (unsigned long)(actual);                                                \
+        unsigned long e_ = (unsigned long)(expected);                                              \
+        if (a_ != e_) {                                                                            \
+            failures++;                                                                            \
+            printf("  FAIL %s:%d: %s is %lu, expected %lu\n", __FILE__, __LINE__, #actual, a_,     \
+                   e_);                                                                            \
+        }                                                                                          \
     } while (0)
 
 static void test_init_is_empty(void)
@@ -169,17 +169,14 @@ static void test_free_and_available_are_complementary(void)
     circular_buffer_init(&cb, storage, sizeof(storage));
 
     for (size_t i = 0; i < sizeof(storage); i++) {
-        CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb),
-                 sizeof(storage));
+        CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb), sizeof(storage));
         CHECK(circular_buffer_push(&cb, (uint8_t)i));
     }
-    CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb),
-             sizeof(storage));
+    CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb), sizeof(storage));
 
     // Still complementary once the drop-oldest path has run.
     CHECK(circular_buffer_push(&cb, 0xFF));
-    CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb),
-             sizeof(storage));
+    CHECK_EQ(circular_buffer_available(&cb) + circular_buffer_free(&cb), sizeof(storage));
 }
 
 static void test_size_one_buffer(void)
@@ -213,8 +210,7 @@ int main(void)
         {"wraparound many times", test_wraparound_many_times},
         {"overrun keeps the newest", test_overrun_keeps_the_newest},
         {"clear discards content", test_clear_discards_content},
-        {"free and available are complementary",
-         test_free_and_available_are_complementary},
+        {"free and available are complementary", test_free_and_available_are_complementary},
         {"size one buffer", test_size_one_buffer},
     };
 
