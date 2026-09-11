@@ -1,0 +1,9 @@
+# Third-party code, kept byte-for-byte as it arrived so that a future update
+# from upstream stays a clean diff.
+#
+# src/font16.c and src/fonts.h are STMicroelectronics' STM32 LCD font tables,
+# copyright 2014, BSD-3-Clause. fonts.h is additionally not UTF-8: it carries
+# GB2312-encoded Chinese comments from the Waveshare example lineage, which is
+# why grep treats it as binary and silently skips it.
+src/font16.c
+src/fonts.h
