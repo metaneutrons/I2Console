@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (C) 2025 Metaneutrons
 /**
  * @file i2console.c
  * @brief I2Console ESP-IDF Component Implementation
