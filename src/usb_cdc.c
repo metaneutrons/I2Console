@@ -83,6 +83,16 @@ void uart_bridge_init(void) {
     uart_init(UART_BRIDGE_INST, UART_BRIDGE_DEFAULT_BAUD);
     gpio_set_function(UART_BRIDGE_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_BRIDGE_RX_PIN, GPIO_FUNC_UART);
+
+    // Both idle high: the signals are active low, so nothing is asserted
+    // until the host says so.
+    gpio_init(UART_BRIDGE_DTR_PIN);
+    gpio_set_dir(UART_BRIDGE_DTR_PIN, GPIO_OUT);
+    gpio_put(UART_BRIDGE_DTR_PIN, 1);
+
+    gpio_init(UART_BRIDGE_RTS_PIN);
+    gpio_set_dir(UART_BRIDGE_RTS_PIN, GPIO_OUT);
+    gpio_put(UART_BRIDGE_RTS_PIN, 1);
 }
 
 void uart_bridge_task(void) {
@@ -143,4 +153,12 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p_line_coding)
                     ? p_line_coding->data_bits : 8;
 
     uart_set_format(UART_BRIDGE_INST, data, stop, parity);
+}
+
+// TinyUSB line state callback – forward the host's DTR and RTS to the target.
+void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts) {
+    if (itf != CDC_ITF_UART) return;
+
+    gpio_put(UART_BRIDGE_DTR_PIN, !dtr);
+    gpio_put(UART_BRIDGE_RTS_PIN, !rts);
 }
