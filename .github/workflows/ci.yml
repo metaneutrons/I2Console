@@ -121,18 +121,64 @@ jobs:
             src/main.c
         run: |
           set -euo pipefail
-          sysinc="$(arm-none-eabi-gcc -print-sysroot)/include"
-          gccinc="$(arm-none-eabi-gcc -print-file-name=include)"
-          test -d "$sysinc" && test -d "$gccinc"
-          mapfile -t files < <(printf '%s' "$TIDY_FILES" | grep -v '^[[:space:]]*$' | tr -d ' ')
-          test "${#files[@]}" -gt 0
-          for f in "${files[@]}"; do
-            test -f "$f" || { echo "::error::$f is on the clang-tidy list but does not exist"; exit 1; }
+
+          # The include paths are asked of the compiler rather than guessed.
+          # `-print-sysroot` returns an EMPTY string for Ubuntu's
+          # gcc-arm-none-eabi, so `"$(... )/include"` becomes `/include` and
+          # clang then cannot find assert.h or sys/cdefs.h. The search list
+          # below is correct on any layout.
+          mapfile -t incs < <(
+            : | arm-none-eabi-gcc -xc -E -Wp,-v - 2>&1 |
+            sed -n '/#include <...> search starts here:/,/End of search list./p' |
+            sed -e '1d' -e '$d' -e 's/^ *//'
+          )
+          if [ "${#incs[@]}" -eq 0 ]; then
+            echo "::error::could not determine the ARM include search path"
+            exit 1
+          fi
+
+          args=()
+          for d in "${incs[@]}"; do
+            if [ -d "$d" ]; then
+              args+=( "--extra-arg=-isystem$d" )
+              echo "include: $d"
+            fi
           done
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "::error::none of the reported include directories exist"
+            exit 1
+          fi
+
+          # Positive probe before the gate runs: the two headers whose absence
+          # previously turned every finding into a parse error must resolve.
+          # Without this the job can only fail with a confusing clang message.
+          for h in assert.h sys/cdefs.h inttypes.h; do
+            found=""
+            for d in "${incs[@]}"; do
+              [ -f "$d/$h" ] && { found="$d/$h"; break; }
+            done
+            if [ -z "$found" ]; then
+              echo "::error::$h is not in the ARM include search path; clang-tidy would report parse errors rather than findings"
+              exit 1
+            fi
+            echo "resolved: $h -> $found"
+          done
+
+          mapfile -t files < <(printf '%s' "$TIDY_FILES" | grep -v '^[[:space:]]*$' | tr -d ' ')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::the clang-tidy file list is empty"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is on the clang-tidy list but does not exist"
+              exit 1
+            fi
+          done
+
           clang-tidy-18 --quiet -p build-tidy \
             --extra-arg=--target=arm-none-eabi \
-            --extra-arg=-isystem"$sysinc" \
-            --extra-arg=-isystem"$gccinc" \
+            "${args[@]}" \
             "${files[@]}"
 
   commit-hygiene:
