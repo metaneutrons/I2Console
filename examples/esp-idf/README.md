@@ -124,4 +124,6 @@ Get I2Console firmware version string.
 
 ## License
 
-GPL-3.0 - See LICENSE file in repository root
+The example application in `main/` is GPL-3.0-or-later, like the rest of the
+repository. The component under `components/i2console/` is LGPL-3.0-or-later and
+carries its own LICENSE file.

@@ -112,7 +112,10 @@ See [example](../../) directory for complete working example.
 
 ## License
 
-GPL-3.0
+LGPL-3.0-or-later. The firmware in this repository is GPL-3.0-or-later;
+this component is a library meant to be linked into third-party firmware,
+so it carries the lesser licence and linking it does not place your
+application under the GPL. See LICENSE in this directory.
 
 ## Links
 
