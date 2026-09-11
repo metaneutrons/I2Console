@@ -10,9 +10,9 @@
 #include "button.h"
 #include "version.h"
 
-#define TX_BUFFER_SIZE 256
-#define RX_BUFFER_SIZE 1024
-#define WATCHDOG_TIMEOUT_MS 8000
+#define TX_BUFFER_SIZE        256
+#define RX_BUFFER_SIZE        1024
+#define WATCHDOG_TIMEOUT_MS   8000
 #define UI_UPDATE_INTERVAL_MS 100
 
 static uint8_t tx_buffer_data[TX_BUFFER_SIZE];
@@ -20,7 +20,8 @@ static uint8_t rx_buffer_data[RX_BUFFER_SIZE];
 static circular_buffer_t tx_buffer;
 static circular_buffer_t rx_buffer;
 
-int main(void) {
+int main(void)
+{
     if (watchdog_caused_reboot()) {
         // Will log after USB init
     }
@@ -98,15 +99,9 @@ int main(void) {
             i2c_stats_t stats = i2c_slave_get_stats();
             uint32_t total_errors = stats.tx_overflow + stats.rx_overflow + stats.i2c_errors;
 
-            lcd_ui_update_i2c(
-                flash_config_get_i2c_address(),
-                circular_buffer_available(&tx_buffer),
-                circular_buffer_available(&rx_buffer),
-                stats.tx_bytes,
-                stats.rx_bytes,
-                usb_cdc_connected(),
-                total_errors
-            );
+            lcd_ui_update_i2c(flash_config_get_i2c_address(), circular_buffer_available(&tx_buffer),
+                              circular_buffer_available(&rx_buffer), stats.tx_bytes, stats.rx_bytes,
+                              usb_cdc_connected(), total_errors);
 
             uart_bridge_stats_t uart_stats = uart_bridge_get_stats();
             lcd_ui_update_uart(&uart_stats);
