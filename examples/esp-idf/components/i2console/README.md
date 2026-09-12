@@ -121,12 +121,19 @@ this component is a library meant to be linked into third-party firmware,
 so it carries the lesser licence and linking it does not place your
 application under the GPL. See LICENSE in this directory.
 
-## Not on the component registry
+## Component registry
 
-The component builds and the example in this repository exercises it in CI, but
-it is not published to the ESP Component Registry. Reopening that channel needs
-a registry token and a qualification run of the release pipeline, which is a
-deliberate step rather than a side effect of this component working again.
+The release pipeline publishes this component to the ESP Component Registry as
+`metaneutrons/i2console`, sharing its version with the firmware. The channel is
+optional and activates when the `IDF_COMPONENT_API_TOKEN` secret is present in
+the repository's `release` environment; without it the release skips the
+channel and says so.
+
+Before anything is published, the release preflight checks that the token is
+accepted, that the version is not already in the registry, and that the
+component packs and validates through `compote component upload --dry-run`.
+After publishing, it reads the version back from the public registry API before
+the release is promoted to `latest`.
 
 ## Links
 
