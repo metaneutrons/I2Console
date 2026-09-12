@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/metaneutrons/I2Console/compare/v0.3.1...v0.3.2) (2026-09-12)
+
+
+### Bug Fixes
+
+* **release:** pin the component manager in one place ([#32](https://github.com/metaneutrons/I2Console/issues/32)) ([953a461](https://github.com/metaneutrons/I2Console/commit/953a4619a8c7e6297e0a17321bf39032f8e9ee65))
+
 ## [0.3.1](https://github.com/metaneutrons/I2Console/compare/v0.3.0...v0.3.1) (2026-09-12)
 
 
