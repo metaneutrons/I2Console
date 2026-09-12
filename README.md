@@ -166,6 +166,10 @@ One exception: the ESP-IDF component under
 is **LGPL-3.0-or-later**. It is a library meant to be linked into third-party
 firmware, so the lesser licence applies there and it has its own LICENSE file.
 
+The firmware also contains third-party code under other, GPL-compatible terms,
+chiefly STMicroelectronics' LCD font tables and the Raspberry Pi Pico SDK with
+its vendored TinyUSB. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the commit convention and the build

@@ -21,6 +21,20 @@ trim_trailing_whitespace = false
 indent_style = tab
 indent_size = 4
 
+# Vendored STM font tables, kept byte-for-byte as they arrived. fonts.h is
+# ISO-8859 rather than UTF-8: it carries GB2312-encoded Chinese comments from
+# the Waveshare example lineage. Re-encoding vendored bytes to satisfy our own
+# rule would only make the next upstream comparison harder. See
+# THIRD-PARTY-NOTICES.md.
+[{src/font16.c,src/fonts.h}]
+charset = unset
+end_of_line = unset
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+max_line_length = unset
+
 # Vendored SDK, not ours to reformat.
 [pico-sdk/**]
 charset = unset
