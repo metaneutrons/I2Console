@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/metaneutrons/I2Console/compare/v0.2.1...v0.2.2) (2026-09-12)
+
+
+### Bug Fixes
+
+* **release:** drop the preflight probe that cannot pass ([#23](https://github.com/metaneutrons/I2Console/issues/23)) ([171fc9f](https://github.com/metaneutrons/I2Console/commit/171fc9ff96935421078dc41614872f7e1acfb3a5))
+
 ## [0.2.1](https://github.com/metaneutrons/I2Console/compare/v0.2.0...v0.2.1) (2026-09-12)
 
 
