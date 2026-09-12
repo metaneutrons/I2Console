@@ -235,7 +235,7 @@ jobs:
             test -s "dist/${f}.spdx.json"
           done
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: payloads
           path: dist/
@@ -282,7 +282,7 @@ jobs:
             dist/*.bin
             dist/*.spdx.json
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: signed
           path: dist/
@@ -372,7 +372,7 @@ jobs:
           echo "expected release set: $assets"
           cat SHA256SUMS
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-assets
           path: dist/
@@ -386,6 +386,12 @@ jobs:
     needs: [metadata]
     if: ${{ needs.metadata.outputs.is_prerelease == 'false' }}
     runs-on: ubuntu-24.04
+    # `contents: write` so the release-state check below can see a DRAFT
+    # release at all: drafts are only visible with push access, and a
+    # read-only token gets a 404 that is indistinguishable from "no release".
+    # The job still mutates nothing.
+    permissions:
+      contents: write
     steps:
       - name: Check the release is writable and not already published
         env:
@@ -394,13 +400,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Read-only: does the token carry push, which is what creating a
-          # release requires.
-          perm=$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push')
-          if [ "$perm" != true ]; then
-            echo "::error::the token cannot write to ${GITHUB_REPOSITORY}"
-            exit 1
-          fi
+          # There is deliberately no runtime probe of "can this token write".
+          # Measured on 12 September 2026 in a pull request run:
+          # `GET /repos/{owner}/{repo}` reports
+          # {"admin":false,"maintain":false,"pull":false,"push":false,...}
+          # for GITHUB_TOKEN under BOTH `contents: read` and `contents: write`.
+          # The endpoint does not reflect the workflow's permissions block, so
+          # a check on `.permissions.push` can never pass. It cost the v0.2.0
+          # and v0.2.1 tags before it was measured rather than assumed.
+          #
+          # Write access here is guaranteed statically instead: `stage`
+          # declares `contents: write`, and scripts/ci/check-preflight-permissions.py
+          # fails the build if that ever stops being true. This pipeline has no
+          # external credentials to pre-check; the GitHub release is its only
+          # channel.
 
           # A release that is already published must never be rewritten.
           state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \

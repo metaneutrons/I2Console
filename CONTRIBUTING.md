@@ -61,7 +61,34 @@ flashes it with `picotool`.
 
 Warnings are expected to stay at zero.
 
+## Tests
+
+Host tests for the modules with no hardware dependency live in `tests/`:
+
+```bash
+make -C tests          # build and run
+make -C tests coverage # and enforce the line coverage floor
+```
+
+`make coverage` additionally needs `gcovr`. The floor is hard, and CI runs the
+same target.
+
+## Formatting and static analysis
+
+`clang-format` is enforced. The tree is formatted, the pre-commit hook checks
+staged files, and CI checks all of them. The vendored STM font tables under
+`src/font16.c` and `src/fonts.h` are excluded through `.clang-format-ignore`.
+
+CI pins `clang-format-18`. Version 23 produces identical output on this tree,
+so a newer local toolchain is fine. Install it with `brew install llvm` on
+macOS or `apt-get install clang-format-18` on Debian; it does not have to be on
+`PATH`, because the hook also looks in Homebrew's keg-only location.
+
+`clang-tidy` runs against a declared list of files in
+`.github/workflows/ci.yml`. The remaining sources still carry findings, tracked
+in issue #19; add a file to the list once it is clean.
+
 ## Before you push
 
-Nothing is enforced locally yet. Build the firmware and make sure it produces no
-warnings. See the README for flashing and for the debug console on CDC1.
+The hooks run `gitleaks` and a firmware build on push, and `clang-format` plus
+the staged-file guards on commit. Install them once with `lefthook install`.

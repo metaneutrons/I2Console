@@ -4,24 +4,23 @@
 #define USB_VID 0x1209
 #define USB_PID 0xFABF
 
-tusb_desc_device_t const desc_device = {
-    .bLength = sizeof(tusb_desc_device_t),
-    .bDescriptorType = TUSB_DESC_DEVICE,
-    .bcdUSB = 0x0200,
-    .bDeviceClass = TUSB_CLASS_MISC,
-    .bDeviceSubClass = MISC_SUBCLASS_COMMON,
-    .bDeviceProtocol = MISC_PROTOCOL_IAD,
-    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor = USB_VID,
-    .idProduct = USB_PID,
-    .bcdDevice = 0x0100,
-    .iManufacturer = 0x01,
-    .iProduct = 0x02,
-    .iSerialNumber = 0x03,
-    .bNumConfigurations = 0x01
-};
+tusb_desc_device_t const desc_device = {.bLength = sizeof(tusb_desc_device_t),
+                                        .bDescriptorType = TUSB_DESC_DEVICE,
+                                        .bcdUSB = 0x0200,
+                                        .bDeviceClass = TUSB_CLASS_MISC,
+                                        .bDeviceSubClass = MISC_SUBCLASS_COMMON,
+                                        .bDeviceProtocol = MISC_PROTOCOL_IAD,
+                                        .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
+                                        .idVendor = USB_VID,
+                                        .idProduct = USB_PID,
+                                        .bcdDevice = 0x0100,
+                                        .iManufacturer = 0x01,
+                                        .iProduct = 0x02,
+                                        .iSerialNumber = 0x03,
+                                        .bNumConfigurations = 0x01};
 
-uint8_t const *tud_descriptor_device_cb(void) {
+uint8_t const *tud_descriptor_device_cb(void)
+{
     return (uint8_t const *)&desc_device;
 }
 
@@ -54,7 +53,8 @@ uint8_t const desc_configuration[] = {
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_2, 6, EPNUM_CDC_2_NOTIF, 8, EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
 };
 
-uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
+uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
+{
     (void)index;
     return desc_configuration;
 }
@@ -68,14 +68,16 @@ char const *string_desc_arr[] = {
 
 static uint16_t _desc_str[32];
 
-static void set_desc_string(const char *str, uint8_t *chr_count) {
+static void set_desc_string(const char *str, uint8_t *chr_count)
+{
     *chr_count = strlen(str);
     for (uint8_t i = 0; i < *chr_count; i++) {
         _desc_str[1 + i] = str[i];
     }
 }
 
-uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
+uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
+{
     (void)langid;
     uint8_t chr_count;
 
@@ -98,7 +100,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     } else if (index == 6) {
         set_desc_string("I2Console Debug", &chr_count);
     } else {
-        if (!(index < sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))) return NULL;
+        if (!(index < sizeof(string_desc_arr) / sizeof(string_desc_arr[0])))
+            return NULL;
         const char *str = string_desc_arr[index];
         chr_count = strlen(str);
         for (uint8_t i = 0; i < chr_count; i++) {

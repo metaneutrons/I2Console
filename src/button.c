@@ -11,7 +11,8 @@
 static bool pressed = false;
 static uint32_t press_start = 0;
 
-static bool __no_inline_not_in_flash_func(read_bootsel)(void) {
+static bool __no_inline_not_in_flash_func(read_bootsel)(void)
+{
     uint32_t flags = save_and_disable_interrupts();
 
     // Disable QSPI SS output driver so we can read the button
@@ -19,7 +20,8 @@ static bool __no_inline_not_in_flash_func(read_bootsel)(void) {
                     GPIO_OVERRIDE_LOW << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
                     IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
 
-    for (volatile int i = 0; i < 1000; ++i);
+    for (volatile int i = 0; i < 1000; ++i)
+        ;
 
     // INFROMPAD is bit 17 in status register
     bool button = !(io_qspi_hw->io[QSPI_SS_INDEX].status & (1u << 17));
@@ -32,12 +34,14 @@ static bool __no_inline_not_in_flash_func(read_bootsel)(void) {
     return button;
 }
 
-void button_init(void) {
+void button_init(void)
+{
     pressed = false;
     press_start = 0;
 }
 
-button_event_t button_task(void) {
+button_event_t button_task(void)
+{
     bool raw = read_bootsel();
     uint32_t now = to_ms_since_boot(get_absolute_time());
 
