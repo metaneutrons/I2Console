@@ -57,6 +57,35 @@ jobs:
             build/I2Console.elf
             build/I2Console.bin
 
+  permission-probe:
+    name: Permission probe
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: What does the repo endpoint report for a write-capable GITHUB_TOKEN?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "--- with contents: write ---"
+          gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions'
+          echo "push field: $(gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push')"
+
+  permission-probe-read:
+    name: Permission probe read
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: And for a read-only one?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "--- with contents: read ---"
+          gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions'
+
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-24.04
