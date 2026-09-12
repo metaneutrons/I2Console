@@ -1,5 +1,10 @@
 # I2Console ESP-IDF Example
 
+> **This example does not build.** It depends on the mothballed `i2console`
+> component, which references a `bsp` component that does not exist. The CI job
+> that built it has been removed. Tracked in
+> [issue #6](https://github.com/metaneutrons/I2Console/issues/6).
+
 Enterprise-grade example demonstrating I2Console integration with ESP-IDF v5.5+.
 
 ## Features
@@ -119,4 +124,6 @@ Get I2Console firmware version string.
 
 ## License
 
-GPL-3.0 - See LICENSE file in repository root
+The example application in `main/` is GPL-3.0-or-later, like the rest of the
+repository. The component under `components/i2console/` is LGPL-3.0-or-later and
+carries its own LICENSE file.

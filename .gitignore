@@ -5,6 +5,10 @@ build/
 *.swo
 *~
 
+# python bytecode from scripts/release/
+__pycache__/
+*.pyc
+
 # agent scratch state, not project content
 .amazonq/
 .claude/

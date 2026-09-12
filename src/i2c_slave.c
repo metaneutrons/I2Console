@@ -12,15 +12,18 @@
 static uint8_t fw_version_byte = 0x01;
 static char version_short[16] = {0};
 
-static void parse_version(void) {
+static void parse_version(void)
+{
     const char *v = FW_VERSION;
     // Skip 'v' prefix if present
-    if (v[0] == 'v') v++;
-    
+    if (v[0] == 'v')
+        v++;
+
     // Copy until we hit '-g' (git hash marker) or end
     int i = 0;
     while (v[i] && i < 15) {
-        if (v[i] == '-' && v[i+1] == 'g') break;
+        if (v[i] == '-' && v[i + 1] == 'g')
+            break;
         version_short[i] = v[i];
         i++;
     }
@@ -34,13 +37,14 @@ static uint8_t current_register = 0;
 static bool register_set = false;
 static bool is_read_mode = false;
 
-static void i2c0_irq_handler(void) {
+static void i2c0_irq_handler(void)
+{
     i2c_hw_t *hw = i2c_get_hw(i2c0);
     uint32_t intr_stat = hw->intr_stat;
-    
+
     if (intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
         uint8_t data = (uint8_t)hw->data_cmd;
-        
+
         if (!register_set) {
             current_register = data;
             register_set = true;
@@ -58,11 +62,11 @@ static void i2c0_irq_handler(void) {
             }
         }
     }
-    
+
     if (intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
         hw->clr_rd_req;
         uint8_t data = 0;
-        
+
         if (current_register == REG_DEVICE_ID) {
             // Return device ID as 2-byte sequence from single register
             static uint8_t device_id_byte = 0;
@@ -71,7 +75,7 @@ static void i2c0_irq_handler(void) {
                 device_id_byte = 1;
             } else {
                 data = DEVICE_ID & 0xFF; // Low byte second
-                device_id_byte = 0; // Reset for next read sequence
+                device_id_byte = 0;      // Reset for next read sequence
             }
         } else if (current_register == REG_FW_VERSION) {
             data = fw_version_byte;
@@ -97,50 +101,52 @@ static void i2c0_irq_handler(void) {
                 stats.rx_bytes++;
             }
         }
-        
+
         hw->data_cmd = data;
     }
-    
+
     if (intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
         hw->clr_stop_det;
         register_set = false;
     }
 }
 
-void i2c_slave_init(circular_buffer_t *tx_buf, circular_buffer_t *rx_buf) {
+void i2c_slave_init(circular_buffer_t *tx_buf, circular_buffer_t *rx_buf)
+{
     tx_buffer = tx_buf;
     rx_buffer = rx_buf;
-    
+
     parse_version();
-    
+
     gpio_init(I2C_SLAVE_SDA_PIN);
     gpio_set_function(I2C_SLAVE_SDA_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SLAVE_SDA_PIN);
-    
+
     gpio_init(I2C_SLAVE_SCL_PIN);
     gpio_set_function(I2C_SLAVE_SCL_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SLAVE_SCL_PIN);
-    
+
     i2c_init(i2c0, 100000);
-    
+
     i2c_hw_t *hw = i2c_get_hw(i2c0);
     hw->enable = 0;
     hw->con = I2C_IC_CON_IC_SLAVE_DISABLE_BITS | I2C_IC_CON_IC_RESTART_EN_BITS;
     hw->sar = flash_config_get_i2c_address();
     hw->con &= ~I2C_IC_CON_IC_SLAVE_DISABLE_BITS;
-    hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | 
-                    I2C_IC_INTR_MASK_M_RD_REQ_BITS |
+    hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS |
                     I2C_IC_INTR_MASK_M_STOP_DET_BITS;
     hw->enable = 1;
-    
+
     irq_set_exclusive_handler(I2C0_IRQ, i2c0_irq_handler);
     irq_set_enabled(I2C0_IRQ, true);
 }
 
-void i2c_slave_task(void) {
+void i2c_slave_task(void)
+{
     // Handler runs in interrupt context
 }
 
-i2c_stats_t i2c_slave_get_stats(void) {
+i2c_stats_t i2c_slave_get_stats(void)
+{
     return stats;
 }

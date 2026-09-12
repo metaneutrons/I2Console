@@ -5,7 +5,7 @@
 #include "hardware/gpio.h"
 #include <string.h>
 
-#define UART_BRIDGE_INST uart1
+#define UART_BRIDGE_INST         uart1
 #define UART_BRIDGE_DEFAULT_BAUD 115200
 
 static uint8_t cmd_buffer[64];
@@ -19,29 +19,37 @@ static uart_bridge_stats_t bridge_stats = {
     .parity = 0,
 };
 
-void usb_cdc_init(void) {
+void usb_cdc_init(void)
+{
     tusb_init();
 }
 
-void usb_cdc_task(void) {
+void usb_cdc_task(void)
+{
     tud_task();
 }
 
-bool usb_cdc_connected(void) {
+bool usb_cdc_connected(void)
+{
     return tud_cdc_n_connected(CDC_ITF_DATA);
 }
 
-int usb_cdc_read(uint8_t *buffer, int len) {
-    if (!tud_cdc_n_available(CDC_ITF_DATA)) return 0;
+int usb_cdc_read(uint8_t *buffer, int len)
+{
+    if (!tud_cdc_n_available(CDC_ITF_DATA))
+        return 0;
     return tud_cdc_n_read(CDC_ITF_DATA, buffer, len);
 }
 
-int usb_cdc_write(const uint8_t *buffer, int len) {
-    if (!tud_cdc_n_connected(CDC_ITF_DATA)) return 0;
+int usb_cdc_write(const uint8_t *buffer, int len)
+{
+    if (!tud_cdc_n_connected(CDC_ITF_DATA))
+        return 0;
     return tud_cdc_n_write(CDC_ITF_DATA, buffer, len);
 }
 
-void usb_cdc_check_bootloader_cmd(void) {
+void usb_cdc_check_bootloader_cmd(void)
+{
     if (tud_cdc_n_connected(CDC_ITF_DEBUG)) {
         bool dtr = tud_cdc_n_get_line_state(CDC_ITF_DEBUG) & 0x01;
         if (last_dtr_state && !dtr) {
@@ -50,7 +58,8 @@ void usb_cdc_check_bootloader_cmd(void) {
         last_dtr_state = dtr;
     }
 
-    if (!tud_cdc_n_available(CDC_ITF_DEBUG)) return;
+    if (!tud_cdc_n_available(CDC_ITF_DEBUG))
+        return;
 
     while (tud_cdc_n_available(CDC_ITF_DEBUG) && cmd_len < (int)sizeof(cmd_buffer) - 1) {
         uint8_t c;
@@ -74,18 +83,31 @@ void usb_cdc_check_bootloader_cmd(void) {
         }
     }
 
-    if (cmd_len >= (int)sizeof(cmd_buffer) - 1) cmd_len = 0;
+    if (cmd_len >= (int)sizeof(cmd_buffer) - 1)
+        cmd_len = 0;
 }
 
 // --- UART Bridge ---
 
-void uart_bridge_init(void) {
+void uart_bridge_init(void)
+{
     uart_init(UART_BRIDGE_INST, UART_BRIDGE_DEFAULT_BAUD);
     gpio_set_function(UART_BRIDGE_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_BRIDGE_RX_PIN, GPIO_FUNC_UART);
+
+    // Both idle high: the signals are active low, so nothing is asserted
+    // until the host says so.
+    gpio_init(UART_BRIDGE_DTR_PIN);
+    gpio_set_dir(UART_BRIDGE_DTR_PIN, GPIO_OUT);
+    gpio_put(UART_BRIDGE_DTR_PIN, 1);
+
+    gpio_init(UART_BRIDGE_RTS_PIN);
+    gpio_set_dir(UART_BRIDGE_RTS_PIN, GPIO_OUT);
+    gpio_put(UART_BRIDGE_RTS_PIN, 1);
 }
 
-void uart_bridge_task(void) {
+void uart_bridge_task(void)
+{
     bridge_stats.connected = tud_cdc_n_connected(CDC_ITF_UART) || tud_cdc_n_available(CDC_ITF_UART);
 
     // CDC → UART
@@ -118,13 +140,16 @@ void uart_bridge_task(void) {
     }
 }
 
-uart_bridge_stats_t uart_bridge_get_stats(void) {
+uart_bridge_stats_t uart_bridge_get_stats(void)
+{
     return bridge_stats;
 }
 
 // TinyUSB line coding callback – update UART when host changes baud/format
-void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p_line_coding) {
-    if (itf != CDC_ITF_UART) return;
+void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p_line_coding)
+{
+    if (itf != CDC_ITF_UART)
+        return;
 
     bridge_stats.baud_rate = p_line_coding->bit_rate;
     bridge_stats.data_bits = p_line_coding->data_bits;
@@ -135,12 +160,25 @@ void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *p_line_coding)
     uart_init(UART_BRIDGE_INST, p_line_coding->bit_rate);
 
     uart_parity_t parity = UART_PARITY_NONE;
-    if (p_line_coding->parity == 1) parity = UART_PARITY_ODD;
-    else if (p_line_coding->parity == 2) parity = UART_PARITY_EVEN;
+    if (p_line_coding->parity == 1)
+        parity = UART_PARITY_ODD;
+    else if (p_line_coding->parity == 2)
+        parity = UART_PARITY_EVEN;
 
     uint stop = (p_line_coding->stop_bits == 2) ? 2 : 1;
     uint data = (p_line_coding->data_bits >= 5 && p_line_coding->data_bits <= 8)
-                    ? p_line_coding->data_bits : 8;
+                    ? p_line_coding->data_bits
+                    : 8;
 
     uart_set_format(UART_BRIDGE_INST, data, stop, parity);
+}
+
+// TinyUSB line state callback – forward the host's DTR and RTS to the target.
+void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
+{
+    if (itf != CDC_ITF_UART)
+        return;
+
+    gpio_put(UART_BRIDGE_DTR_PIN, !dtr);
+    gpio_put(UART_BRIDGE_RTS_PIN, !rts);
 }

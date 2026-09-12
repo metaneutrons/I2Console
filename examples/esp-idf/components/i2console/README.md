@@ -1,6 +1,19 @@
 # I2Console ESP-IDF Component
 
-[![Component Registry](https://components.espressif.com/components/metaneutrons/i2console/badge.svg)](https://components.espressif.com/components/metaneutrons/i2console)
+> **This component is mothballed and does not build.**
+>
+> It is not published to the ESP Component Registry, and it cannot be built as
+> it stands: `i2console.c` includes `bsp.h` and calls `bsp_i2c_add_device()`,
+> but no `bsp` component exists here or in ESP-IDF and none is declared as a
+> dependency. On top of that the component uses the new I2C driver while the
+> example initialises the legacy one, so the `port` argument of
+> `i2console_init` is never used and the API below does not describe what the
+> code does.
+>
+> The source stays in the tree, the CI jobs and the publishing channel have
+> been removed until it is fixed. Tracked in
+> [issue #6](https://github.com/metaneutrons/I2Console/issues/6). Treat
+> everything below as the intended design, not as a working interface.
 
 I2C to USB-CDC console bridge driver for ESP-IDF. Automatically mirrors ESP_LOG output to I2Console device.
 
@@ -14,25 +27,10 @@ I2C to USB-CDC console bridge driver for ESP-IDF. Automatically mirrors ESP_LOG 
 
 ## Installation
 
-### Using ESP Component Manager (Recommended)
-
-Add to your project's `idf_component.yml`:
-
-```yaml
-dependencies:
-  metaneutrons/i2console:
-    version: "^0.1.0"
-```
-
-Or via command line:
-
-```bash
-idf.py add-dependency "metaneutrons/i2console^0.1.0"
-```
-
-### Manual Installation
-
-Copy this directory to your project's `components/` folder.
+There is no installation route at the moment. The component is not on the ESP
+Component Registry, so `idf.py add-dependency` cannot resolve it, and copying
+the directory into a project's `components/` folder fails at the missing `bsp`
+component. See the notice at the top and issue #6.
 
 ## Quick Start
 
@@ -114,7 +112,10 @@ See [example](../../) directory for complete working example.
 
 ## License
 
-GPL-3.0
+LGPL-3.0-or-later. The firmware in this repository is GPL-3.0-or-later;
+this component is a library meant to be linked into third-party firmware,
+so it carries the lesser licence and linking it does not place your
+application under the GPL. See LICENSE in this directory.
 
 ## Links
 

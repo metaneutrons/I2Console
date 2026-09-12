@@ -3,25 +3,25 @@
 
 #include <stdint.h>
 
-#define LCD_WIDTH 240
+#define LCD_WIDTH  240
 #define LCD_HEIGHT 135
 
-#define LCD_DC_PIN 8
-#define LCD_CS_PIN 9
-#define LCD_CLK_PIN 10
+#define LCD_DC_PIN   8
+#define LCD_CS_PIN   9
+#define LCD_CLK_PIN  10
 #define LCD_MOSI_PIN 11
-#define LCD_RST_PIN 12
-#define LCD_BL_PIN 13
+#define LCD_RST_PIN  12
+#define LCD_BL_PIN   13
 
-#define COLOR_BLACK 0x0000
-#define COLOR_WHITE 0xFFFF
-#define COLOR_RED 0xF800
-#define COLOR_GREEN 0x07E0
-#define COLOR_BLUE 0x001F
-#define COLOR_CYAN 0x07FF
-#define COLOR_MAGENTA 0xF81F
-#define COLOR_YELLOW 0xFFE0
-#define COLOR_GRAY 0x8410
+#define COLOR_BLACK    0x0000
+#define COLOR_WHITE    0xFFFF
+#define COLOR_RED      0xF800
+#define COLOR_GREEN    0x07E0
+#define COLOR_BLUE     0x001F
+#define COLOR_CYAN     0x07FF
+#define COLOR_MAGENTA  0xF81F
+#define COLOR_YELLOW   0xFFE0
+#define COLOR_GRAY     0x8410
 #define COLOR_DARKGRAY 0x2104
 
 void lcd_init(void);

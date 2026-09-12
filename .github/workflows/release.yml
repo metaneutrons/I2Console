@@ -1,139 +1,575 @@
+# Hardened release pipeline.
+#
+# There is deliberately NO tag or release trigger here. release-please.yml
+# creates the tag and the draft release and then dispatches this workflow at
+# that tag. A trigger of its own would run two pipelines per tag.
+#
+# Actions loads the workflow file from exactly the ref that is dispatched
+# against, so a repair on main does not reach an existing tag, and the tag
+# ruleset forbids deleting or moving `refs/tags/v*`. Every test run therefore
+# consumes a tag identity permanently.
+#
+# This project publishes through exactly one channel, the GitHub release. There
+# is no crates.io, Homebrew, AUR or APT channel, so the channel preflight and
+# the channel publish stages of the standard collapse into the non-mutating
+# release checks in `preflight` and the read-back in `stage`.
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.1.0)'
-        required: true
-        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  create-tag:
-    name: Create Tag (Manual Trigger)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    
+  # Stage 1: establish identity.
+  metadata:
+    name: Establish identity
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.id.outputs.tag }}
+      version: ${{ steps.id.outputs.version }}
+      is_prerelease: ${{ steps.id.outputs.is_prerelease }}
+      epoch: ${{ steps.id.outputs.epoch }}
+      payloads: ${{ steps.id.outputs.payloads }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
 
-  build-and-release:
-    name: Build and Release
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: [create-tag]
-    # Skip needs if triggered by tag push
-    continue-on-error: ${{ github.event_name == 'push' }}
-    
+      - name: Derive and check the release identity
+        id: id
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "::error::this workflow must be dispatched against a tag, got $GITHUB_REF_TYPE $GITHUB_REF_NAME"
+            exit 1
+          fi
+          tag="$GITHUB_REF_NAME"
+
+          # Canonical SemVer with a leading v. A prerelease suffix is allowed;
+          # build metadata is not, because it would not survive a file name.
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          if ! printf '%s' "$tag" | grep -Eq "$semver"; then
+            echo "::error::tag $tag is not canonical SemVer with a leading v"
+            exit 1
+          fi
+
+          # The tag must point at exactly the commit this run checked out.
+          # An annotated tag is not required: release-please creates lightweight
+          # ones, and immutability comes from the tag ruleset instead.
+          target=$(git rev-parse "${tag}^{}")
+          if [ "$target" != "$GITHUB_SHA" ]; then
+            echo "::error::tag $tag points at $target but the run is on $GITHUB_SHA"
+            exit 1
+          fi
+
+          # The release core is the version without the prerelease suffix; only
+          # it is compared against the manifest, because a suffix is by
+          # definition not in there.
+          version="${tag#v}"
+          version="${version%%-*}"
+
+          manifest=$(jq -r '."."' .release-please-manifest.json)
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::release core $version does not match the manifest ($manifest)"
+            exit 1
+          fi
+
+          # Explicitly true or false: `stage` has to distinguish a deliberately
+          # skipped preflight from a failed one, and an empty string would make
+          # both conditions false.
+          if [ "$tag" = "v$version" ]; then
+            is_prerelease=false
+          else
+            is_prerelease=true
+          fi
+
+          epoch=$(git log -1 --format=%ct "$GITHUB_SHA")
+
+          # The single declaration of what this release ships. Every later
+          # stage derives its expected inventory from this list; nothing counts
+          # assets by hand.
+          payloads=$(jq -cn --arg v "$version" \
+            '["I2Console-\($v).uf2","I2Console-\($v).elf","I2Console-\($v).bin"]')
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "is_prerelease=$is_prerelease"
+            echo "epoch=$epoch"
+            echo "payloads=$payloads"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "tag=$tag version=$version prerelease=$is_prerelease epoch=$epoch"
+          echo "payloads: $payloads"
+
+  # Stage 2: build, then read the artefacts back.
+  build:
+    name: Build firmware
+    needs: [metadata]
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           submodules: recursive
           fetch-depth: 0
-      
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "tag=v${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-      
+
       - name: Install ARM toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential cmake
-      
-      - name: Build firmware
+
+      - name: Build
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.metadata.outputs.epoch }}
         run: |
+          set -euo pipefail
           mkdir build
           cd build
           cmake ..
-          make -j$(nproc)
-      
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.tag }}
-          draft: false
-          prerelease: false
-          files: |
-            build/I2Console.uf2
-            build/I2Console.elf
-            build/I2Console.bin
-          body: |
-            ## I2Console ${{ steps.version.outputs.tag }}
-            
-            ### Firmware
-            - `I2Console.uf2` - Flash to RP2350-GEEK (drag-and-drop or picotool)
-            - `I2Console.elf` - Debug symbols
-            - `I2Console.bin` - Raw binary
-            
-            ### Installation
-            ```bash
-            # Method 1: Drag-and-drop
-            # Hold BOOTSEL, connect USB, drag I2Console.uf2 to drive
-            
-            # Method 2: picotool
-            picotool load I2Console.uf2
-            picotool reboot
-            ```
-            
-            ### ESP-IDF Component
-            ```bash
-            idf.py add-dependency "metaneutrons/i2console^${{ steps.version.outputs.version }}"
-            ```
-            
-            See [README](https://github.com/metaneutrons/I2Console/blob/main/README.md) for details.
+          make -j"$(nproc)"
 
-  publish-component:
-    name: Publish ESP-IDF Component
-    runs-on: ubuntu-latest
-    needs: [build-and-release]
-    if: always() && (needs.build-and-release.result == 'success' || needs.build-and-release.result == 'skipped')
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Install component manager
-        run: pip install idf-component-manager
-      
-      - name: Check component manifest
-        working-directory: examples/esp-idf/components/i2console
-        run: |
-          echo "Checking idf_component.yml syntax..."
-          python3 -c "import yaml; yaml.safe_load(open('idf_component.yml'))"
-          echo "Component manifest is valid"
-      
-      - name: Upload component to registry
-        working-directory: examples/esp-idf/components/i2console
+      - name: Name the payloads and check what was built
         env:
-          IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          PAYLOADS: ${{ needs.metadata.outputs.payloads }}
         run: |
-          compote component upload --name i2console --namespace metaneutrons --version ${{ steps.version.outputs.version }} --allow-existing
+          set -euo pipefail
+          mkdir -p dist
+
+          # The version baked into the firmware must be the tag, not a bare
+          # hash. This is the reason the checkout above is not shallow.
+          baked=$(sed -n 's/.*FW_VERSION "\(.*\)".*/\1/p' build/generated/version.h)
+          echo "FW_VERSION in the image: $baked"
+          case "$baked" in
+            "v${VERSION}"|"v${VERSION}-"*) : ;;
+            *) echo "::error::the image reports FW_VERSION '$baked', which does not carry v${VERSION}"; exit 1 ;;
+          esac
+
+          cp build/I2Console.uf2 "dist/I2Console-${VERSION}.uf2"
+          cp build/I2Console.elf "dist/I2Console-${VERSION}.elf"
+          cp build/I2Console.bin "dist/I2Console-${VERSION}.bin"
+
+          # Every declared payload has to exist and be non-empty. Derived from
+          # the list, so the check cannot drift from the declaration.
+          printf '%s' "$PAYLOADS" | jq -r '.[]' | while IFS= read -r f; do
+            test -s "dist/$f" || { echo "::error::payload dist/$f missing or empty"; exit 1; }
+          done
+
+          # Firmware cannot be executed on the runner, so the standard's
+          # clean-room start of the built binaries has no equivalent here. The
+          # structural read-back below is what replaces it: UF2 magic and the
+          # RP2350 family id, and an ELF that really is a 32-bit little-endian
+          # ARM executable.
+          python3 - "dist/I2Console-${VERSION}.uf2" <<'EOF'
+          import collections, struct, sys
+
+          ARM_S, ABSOLUTE = 0xE48BFF59, 0xE48BFF57
+          NAMES = {0xE48BFF56: 'RP2040', ABSOLUTE: 'ABSOLUTE', 0xE48BFF58: 'DATA',
+                   ARM_S: 'RP2350_ARM_S', 0xE48BFF5A: 'RP2350_RISCV',
+                   0xE48BFF5B: 'RP2350_ARM_NS'}
+
+          data = open(sys.argv[1], 'rb').read()
+          if not data or len(data) % 512:
+              sys.exit(f"UF2 size {len(data)} is not a non-zero multiple of 512")
+          first, second = struct.unpack('<II', data[:8])
+          if (first, second) != (0x0A324655, 0x9E5D5157):
+              sys.exit(f"UF2 magic wrong: {first:#x} {second:#x}")
+
+          blocks = collections.Counter(
+              struct.unpack('<I', data[o + 28:o + 32])[0]
+              for o in range(0, len(data), 512))
+          for fam, n in sorted(blocks.items()):
+              print(f"  {fam:#x} {NAMES.get(fam, 'UNKNOWN'):14s} {n:4d} blocks")
+
+          # Measured against a real build: the image carries 152 RP2350_ARM_S
+          # blocks plus exactly one ABSOLUTE block, which holds the flash
+          # bootloader entry. Asserting only ARM_S would fail every release.
+          if ARM_S not in blocks:
+              sys.exit("no RP2350_ARM_S block: this is not an RP2350 ARM image")
+          unexpected = set(blocks) - {ARM_S, ABSOLUTE}
+          if unexpected:
+              sys.exit("unexpected UF2 family ids: "
+                       + ", ".join(f"{f:#x} ({NAMES.get(f, 'UNKNOWN')})"
+                                   for f in sorted(unexpected)))
+          if blocks[ABSOLUTE] > 1:
+              sys.exit(f"{blocks[ABSOLUTE]} ABSOLUTE blocks, expected at most one")
+          print(f"UF2 ok: {len(data) // 512} blocks")
+          EOF
+
+          readelf -h "dist/I2Console-${VERSION}.elf" > elf.txt
+          grep -q 'Machine:.*ARM' elf.txt
+          grep -q "Class:.*ELF32" elf.txt
+          grep -q "Data:.*little endian" elf.txt
+          echo "ELF ok:"; grep -E 'Machine|Entry point' elf.txt
+          arm-none-eabi-size "dist/I2Console-${VERSION}.elf"
+          rm -f elf.txt
+
+      # The SBOM is written here rather than in `sign`, because it names the
+      # compiler and the pinned submodule commits and both are only present in
+      # this job.
+      - name: SBOM per payload
+        env:
+          PAYLOADS: ${{ needs.metadata.outputs.payloads }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          EPOCH: ${{ needs.metadata.outputs.epoch }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PAYLOADS" | jq -r '.[]' | while IFS= read -r f; do
+            python3 scripts/release/generate-sbom.py \
+              --payload "dist/$f" \
+              --name "$f" \
+              --version "$VERSION" \
+              --tag "$TAG" \
+              --repository "$GITHUB_REPOSITORY" \
+              --epoch "$EPOCH" \
+              --root . \
+              --output "dist/${f}.spdx.json"
+            test -s "dist/${f}.spdx.json"
+          done
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: payloads
+          path: dist/
+          if-no-files-found: error
+
+  # Stage 3: sign, attest, describe.
+  sign:
+    name: Sign and attest
+    needs: [metadata, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write        # cosign keyless and the attestation both need OIDC
+      attestations: write
+    steps:
+      # No checkout: this job only signs and attests what `build` produced,
+      # including the SBOMs it already wrote.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: payloads
+          path: dist
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Cosign keyless, one bundle per payload
+        env:
+          PAYLOADS: ${{ needs.metadata.outputs.payloads }}
+        run: |
+          set -euo pipefail
+          # Only payloads get a bundle. SBOMs are not signed a second time;
+          # they are covered by SHA256SUMS and by the attestation.
+          printf '%s' "$PAYLOADS" | jq -r '.[]' | while IFS= read -r f; do
+            cosign sign-blob --yes \
+              --bundle "dist/${f}.sigstore.json" "dist/${f}"
+            test -s "dist/${f}.sigstore.json"
+          done
+
+      - name: Attest the payloads and their SBOMs
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.uf2
+            dist/*.elf
+            dist/*.bin
+            dist/*.spdx.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed
+          path: dist/
+          if-no-files-found: error
+
+  # Stages 4 and 5: the final candidate inventory. There are no package
+  # channels, so no channel metadata is generated and this is the only
+  # aggregate.
+  candidate:
+    name: Qualify the candidate
+    needs: [metadata, sign]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      assets: ${{ steps.inventory.outputs.assets }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed
+          path: dist
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Expected set, signatures, attestations, checksums
+        id: inventory
+        env:
+          PAYLOADS: ${{ needs.metadata.outputs.payloads }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist
+
+          # The expected candidate set is derived from the payload list, never
+          # written out twice: payload, SBOM and signature bundle per payload.
+          mapfile -t payloads < <(printf '%s' "$PAYLOADS" | jq -r '.[]')
+          # An empty list would make every derived check vacuous, and
+          # `sha256sum` with no arguments would read stdin and hang the job
+          # rather than fail it. Observed while probing this logic.
+          if [ "${#payloads[@]}" -eq 0 ]; then
+            echo "::error::the payload list is empty"
+            exit 1
+          fi
+
+          expected=()
+          for f in "${payloads[@]}"; do
+            expected+=("$f" "${f}.spdx.json" "${f}.sigstore.json")
+          done
+
+          # Helper files live outside the asset directory, so that the listing
+          # can never contain them and no pipeline reads and writes one file.
+          work=$(mktemp -d)
+          printf '%s\n' "${expected[@]}" | sort > "$work/expected"
+          find . -maxdepth 1 -type f -printf '%f\n' | sort > "$work/actual"
+          if ! diff -u "$work/expected" "$work/actual"; then
+            echo "::error::the candidate set does not match the payload list"
+            exit 1
+          fi
+          echo "candidate set matches: ${#expected[@]} files for ${#payloads[@]} payloads"
+
+          identity="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}$"
+          for f in "${payloads[@]}"; do
+            cosign verify-blob \
+              --bundle "${f}.sigstore.json" \
+              --certificate-identity-regexp "$identity" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$f"
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY"
+            gh attestation verify "${f}.spdx.json" --repo "$GITHUB_REPOSITORY"
+          done
+          echo "all payload signatures and attestations verified"
+
+          # SHA256SUMS is written last and covers exactly the candidate list.
+          sha256sum "${expected[@]}" > SHA256SUMS
+          lines=$(wc -l < SHA256SUMS)
+          if [ "$lines" -ne "${#expected[@]}" ]; then
+            echo "::error::SHA256SUMS has $lines lines for ${#expected[@]} assets"
+            exit 1
+          fi
+
+          # The expected release set is the candidate list plus the checksum
+          # file itself, and nothing may add to it later.
+          assets=$(printf '%s\n' "${expected[@]}" SHA256SUMS | jq -Rcs 'split("\n") | map(select(length > 0))')
+          echo "assets=$assets" >> "$GITHUB_OUTPUT"
+          echo "expected release set: $assets"
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: dist/
+          if-no-files-found: error
+
+  # Stage 6: preflight. Non-mutating, and only for a production tag. There are
+  # no package channels to check, so this verifies the one public mutation that
+  # follows: writing the GitHub release.
+  preflight:
+    name: Preflight
+    needs: [metadata]
+    if: ${{ needs.metadata.outputs.is_prerelease == 'false' }}
+    runs-on: ubuntu-24.04
+    # `contents: write` so the release-state check below can see a DRAFT
+    # release at all: drafts are only visible with push access, and a
+    # read-only token gets a 404 that is indistinguishable from "no release".
+    # The job still mutates nothing.
+    permissions:
+      contents: write
+    steps:
+      - name: Check the release is writable and not already published
+        env:
+          TAG: ${{ needs.metadata.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # There is deliberately no runtime probe of "can this token write".
+          # Measured on 12 September 2026 in a pull request run:
+          # `GET /repos/{owner}/{repo}` reports
+          # {"admin":false,"maintain":false,"pull":false,"push":false,...}
+          # for GITHUB_TOKEN under BOTH `contents: read` and `contents: write`.
+          # The endpoint does not reflect the workflow's permissions block, so
+          # a check on `.permissions.push` can never pass. It cost the v0.2.0
+          # and v0.2.1 tags before it was measured rather than assumed.
+          #
+          # Write access here is guaranteed statically instead: `stage`
+          # declares `contents: write`, and scripts/ci/check-preflight-permissions.py
+          # fails the build if that ever stops being true. This pipeline has no
+          # external credentials to pre-check; the GitHub release is its only
+          # channel.
+
+          # A release that is already published must never be rewritten.
+          state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                    --json isDraft --jq .isDraft 2>/dev/null || echo absent)
+          case "$state" in
+            absent) echo "no release under $TAG yet" ;;
+            true)   echo "draft under $TAG, as expected from release-please" ;;
+            false)  echo "::error::release $TAG is already published"; exit 1 ;;
+            *)      echo "::error::unexpected release state: $state"; exit 1 ;;
+          esac
+
+          echo "no package channels are configured for this project; nothing else to pre-check"
+
+  # Stage 7: attach the assets to the draft, read them back, publish as a
+  # prerelease without `latest`.
+  stage:
+    name: Stage the release
+    needs: [metadata, preflight, candidate]
+    if: >-
+      !cancelled()
+      && needs.metadata.result == 'success'
+      && needs.candidate.result == 'success'
+      && (
+        (needs.metadata.outputs.is_prerelease == 'true'
+          && needs.preflight.result == 'skipped')
+        || (needs.metadata.outputs.is_prerelease == 'false'
+          && needs.preflight.result == 'success')
+      )
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: dist
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Attach to the draft
+        env:
+          TAG: ${{ needs.metadata.outputs.tag }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          ASSETS: ${{ needs.candidate.outputs.assets }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                    --json isDraft --jq .isDraft 2>/dev/null || echo absent)
+          case "$state" in
+            absent)
+              # A planned pipeline test tag has no release yet.
+              gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --draft --verify-tag --title "I2Console $TAG" \
+                --notes "Pipeline qualification run for $TAG."
+              ;;
+            true)  echo "attaching to the existing draft" ;;
+            false) echo "::error::release $TAG is already published"; exit 1 ;;
+            *)     echo "::error::unexpected release state: $state"; exit 1 ;;
+          esac
+
+          mapfile -t assets < <(printf '%s' "$ASSETS" | jq -r '.[]')
+          cd dist
+          gh release upload "$TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Read the draft back and verify the bytes it serves
+        env:
+          TAG: ${{ needs.metadata.outputs.tag }}
+          ASSETS: ${{ needs.candidate.outputs.assets }}
+          PAYLOADS: ${{ needs.metadata.outputs.payloads }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf readback && mkdir readback
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir readback
+
+          # Helper files stay outside the download directory, so the listing
+          # cannot pick them up and nothing reads and writes the same file.
+          work=$(mktemp -d)
+          printf '%s' "$ASSETS" | jq -r '.[]' | sort > "$work/expected"
+          cd readback
+          find . -maxdepth 1 -type f -printf '%f\n' | sort > "$work/actual"
+          if ! diff -u "$work/expected" "$work/actual"; then
+            echo "::error::the assets on the release do not match the candidate inventory"
+            exit 1
+          fi
+
+          # The line set of the checksum file must match the inventory minus
+          # the checksum file itself.
+          awk '{print $2}' SHA256SUMS | sort > "$work/sums"
+          grep -vxF SHA256SUMS "$work/expected" | sort > "$work/inventory"
+          if ! diff -u "$work/inventory" "$work/sums"; then
+            echo "::error::SHA256SUMS does not cover exactly the candidate inventory"
+            exit 1
+          fi
+
+          sha256sum -c SHA256SUMS
+
+          # Signatures and attestations are verified against the downloaded
+          # bytes, not against what the build produced.
+          identity="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}$"
+          printf '%s' "$PAYLOADS" | jq -r '.[]' | while IFS= read -r f; do
+            cosign verify-blob \
+              --bundle "${f}.sigstore.json" \
+              --certificate-identity-regexp "$identity" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$f"
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY"
+          done
+          echo "the bytes served by the release verify against their signatures"
+
+      - name: Publish as a prerelease, not as latest
+        env:
+          TAG: ${{ needs.metadata.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --prerelease --latest=false
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease --jq '"draft=\(.isDraft) prerelease=\(.isPrerelease)"'
+
+  # Stage 9: promote. There are no channels in stage 8, so this follows the
+  # staged prerelease directly. Only a production tag is ever promoted; a test
+  # tag stays a prerelease forever, which is what makes it disposable.
+  promote:
+    name: Promote to latest
+    needs: [metadata, stage]
+    if: ${{ needs.metadata.outputs.is_prerelease == 'false' && needs.stage.result == 'success' }}
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Set the finished release to latest
+        env:
+          TAG: ${{ needs.metadata.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          before=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                     --json assets --jq '[.assets[].name] | sort | join(",")')
+
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --prerelease=false --latest
+
+          after=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                    --json assets --jq '[.assets[].name] | sort | join(",")')
+          if [ "$before" != "$after" ]; then
+            echo "::error::the promote changed the asset set"
+            exit 1
+          fi
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease --jq '"draft=\(.isDraft) prerelease=\(.isPrerelease)"'
+          echo "assets untouched by the promote: $after"

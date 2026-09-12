@@ -1,0 +1,42 @@
+# Check selection for bare-metal C. Deliberately narrow: a gate that fires on
+# style opinions gets switched off, and a gate that is off protects nothing.
+#
+# Excluded on purpose:
+#   modernize-*        C++ advice, meaningless here
+#   llvm-*, google-*   house styles of other projects
+#   altera-*           OpenCL
+#   hicpp-*, cppcoreguidelines-*  C++ guidelines
+#   readability-magic-numbers     register addresses and bit masks are the
+#                                 subject matter of this firmware
+#   readability-identifier-length  short names are normal in ISR code
+#   bugprone-signed-bitwise        fires 37 times on pico-sdk register macros,
+#                                  which define bit masks as signed ints; the
+#                                  operand is not ours to change
+#   ...DeprecatedOrUnsafeBufferHandling  suggests the C11 Annex K _s functions,
+#                                  which newlib does not provide at all
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  misc-*,
+  performance-*,
+  readability-braces-around-statements,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-non-const-parameter,
+  readability-redundant-control-flow,
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -bugprone-signed-bitwise,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+
+# Findings in vendored third-party code are not ours to fix. The STM font
+# tables and the pico-sdk are filtered here rather than by listing files on the
+# command line, so the rule holds however clang-tidy is invoked.
+HeaderFilterRegex: '^(?!.*(pico-sdk|font16|fonts\.h)).*$'
+
+WarningsAsErrors: '*'
+FormatStyle: file

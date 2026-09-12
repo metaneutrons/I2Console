@@ -7,14 +7,14 @@
 #define I2C_SLAVE_SDA_PIN 28
 #define I2C_SLAVE_SCL_PIN 29
 
-#define REG_DEVICE_ID 0x00
-#define REG_FW_VERSION 0x01
-#define REG_I2C_ADDRESS 0x02
+#define REG_DEVICE_ID     0x00
+#define REG_FW_VERSION    0x01
+#define REG_I2C_ADDRESS   0x02
 #define REG_CLOCK_STRETCH 0x03
-#define REG_TX_AVAIL_LOW 0x10
+#define REG_TX_AVAIL_LOW  0x10
 #define REG_TX_AVAIL_HIGH 0x11
-#define REG_RX_AVAIL 0x12
-#define REG_DATA_START 0x20
+#define REG_RX_AVAIL      0x12
+#define REG_DATA_START    0x20
 
 #define DEVICE_ID 0x12C0
 

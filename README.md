@@ -1,7 +1,5 @@
 # I2Console
 
-[![ESP Component Registry](https://components.espressif.com/components/metaneutrons/i2console/badge.svg)](https://components.espressif.com/components/metaneutrons/i2console)
-
 Enterprise-grade I2C to USB-CDC console bridge for RP2350-GEEK
 
 ## Overview
@@ -161,7 +159,12 @@ All configuration is stored in flash and persists across reboots:
 
 Copyright (C) 2025 Metaneutrons
 
-GPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
+The firmware is GPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
+
+One exception: the ESP-IDF component under
+[`examples/esp-idf/components/i2console/`](examples/esp-idf/components/i2console/)
+is **LGPL-3.0-or-later**. It is a library meant to be linked into third-party
+firmware, so the lesser licence applies there and it has its own LICENSE file.
 
 ## Contributing
 

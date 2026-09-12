@@ -11,6 +11,11 @@
 #define UART_BRIDGE_TX_PIN 4
 #define UART_BRIDGE_RX_PIN 5
 
+// Modem control forwarded to the target. Both are active low, so the idle
+// level is high and the host asserting DTR or RTS pulls the pin down.
+#define UART_BRIDGE_DTR_PIN 6
+#define UART_BRIDGE_RTS_PIN 7
+
 typedef struct {
     uint32_t tx_bytes;
     uint32_t rx_bytes;
