@@ -16,14 +16,16 @@ static void parse_version(void)
 {
     const char *v = FW_VERSION;
     // Skip 'v' prefix if present
-    if (v[0] == 'v')
+    if (v[0] == 'v') {
         v++;
+    }
 
     // Copy until we hit '-g' (git hash marker) or end
     int i = 0;
     while (v[i] && i < 15) {
-        if (v[i] == '-' && v[i + 1] == 'g')
+        if (v[i] == '-' && v[i + 1] == 'g') {
             break;
+        }
         version_short[i] = v[i];
         i++;
     }

@@ -175,8 +175,9 @@ void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t colo
 
 void lcd_draw_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg)
 {
-    if (c < ' ' || c > '~')
+    if (c < ' ' || c > '~') {
         c = ' ';
+    }
     const uint8_t *glyph = &Font16.table[(c - ' ') * Font16.Height * ((Font16.Width + 7) / 8)];
 
     lcd_set_window(x, y, x + Font16.Width - 1, y + Font16.Height - 1);
