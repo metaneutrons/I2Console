@@ -386,13 +386,10 @@ jobs:
     needs: [metadata]
     if: ${{ needs.metadata.outputs.is_prerelease == 'false' }}
     runs-on: ubuntu-24.04
-    # This job mutates nothing, and it still asks for `contents: write` on
-    # purpose. Its whole job is to answer "will `stage` be allowed to write the
-    # release", and a token can only answer that about itself. The first
-    # production tag, v0.2.0, failed here: the job inherited the workflow's
-    # `contents: read`, asked whether *that* token could push, and correctly
-    # said no. A preflight that holds less than the stage it guards can never
-    # pass, and no prerelease reaches this job to reveal it.
+    # `contents: write` so the release-state check below can see a DRAFT
+    # release at all: drafts are only visible with push access, and a
+    # read-only token gets a 404 that is indistinguishable from "no release".
+    # The job still mutates nothing.
     permissions:
       contents: write
     steps:
@@ -403,14 +400,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The grant `stage` will need. Read-only call, write-capable token.
-          perm=$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push')
-          if [ "$perm" != true ]; then
-            echo "::error::the token cannot write to ${GITHUB_REPOSITORY};"
-            echo "::error::check that this job's permissions match those of the stage job"
-            exit 1
-          fi
-          echo "token carries push, which is what writing the release requires"
+          # There is deliberately no runtime probe of "can this token write".
+          # Measured on 12 September 2026 in a pull request run:
+          # `GET /repos/{owner}/{repo}` reports
+          # {"admin":false,"maintain":false,"pull":false,"push":false,...}
+          # for GITHUB_TOKEN under BOTH `contents: read` and `contents: write`.
+          # The endpoint does not reflect the workflow's permissions block, so
+          # a check on `.permissions.push` can never pass. It cost the v0.2.0
+          # and v0.2.1 tags before it was measured rather than assumed.
+          #
+          # Write access here is guaranteed statically instead: `stage`
+          # declares `contents: write`, and scripts/ci/check-preflight-permissions.py
+          # fails the build if that ever stops being true. This pipeline has no
+          # external credentials to pre-check; the GitHub release is its only
+          # channel.
 
           # A release that is already published must never be rewritten.
           state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
