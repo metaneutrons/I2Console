@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/metaneutrons/I2Console/compare/v0.2.0...v0.2.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **release:** give preflight the grant it is standing in for ([#21](https://github.com/metaneutrons/I2Console/issues/21)) ([1e7d088](https://github.com/metaneutrons/I2Console/commit/1e7d088c055b360dedef86c0d6a23608e6ddf5da))
+
 ## [0.2.0](https://github.com/metaneutrons/I2Console/compare/v0.1.0...v0.2.0) (2026-09-11)
 
 
