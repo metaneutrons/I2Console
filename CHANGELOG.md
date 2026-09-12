@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/metaneutrons/I2Console/compare/v0.2.2...v0.3.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **esp-idf:** take the I2C bus from the caller ([#27](https://github.com/metaneutrons/I2Console/issues/27))
+
+### Features
+
+* **release:** publish the ESP-IDF component to the registry again ([#29](https://github.com/metaneutrons/I2Console/issues/29)) ([f361846](https://github.com/metaneutrons/I2Console/commit/f3618461d46c55f336c3dd0d8dc675974997d998))
+
+
+### Bug Fixes
+
+* **esp-idf:** take the I2C bus from the caller ([#27](https://github.com/metaneutrons/I2Console/issues/27)) ([c7da8bc](https://github.com/metaneutrons/I2Console/commit/c7da8bc2011a0004c0e6462601fddccdc2875d7f))
+
 ## [0.2.2](https://github.com/metaneutrons/I2Console/compare/v0.2.1...v0.2.2) (2026-09-12)
 
 
