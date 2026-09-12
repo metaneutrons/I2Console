@@ -104,6 +104,14 @@ jobs:
           echo "checking ${#files[@]} files"
           clang-format-18 --dry-run --Werror "${files[@]}"
 
+      # Catches the class of defect that cost the v0.2.0 tag: a guard job
+      # holding less access than the job it guards, which can only ever report
+      # a failure for a release that is in fact allowed.
+      - name: Workflow self-consistency
+        run: |
+          sudo apt-get install -y python3-yaml
+          python3 scripts/ci/check-preflight-permissions.py
+
       - name: Compile database for clang-tidy
         run: |
           set -euo pipefail

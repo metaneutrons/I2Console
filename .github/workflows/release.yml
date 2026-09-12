@@ -386,6 +386,15 @@ jobs:
     needs: [metadata]
     if: ${{ needs.metadata.outputs.is_prerelease == 'false' }}
     runs-on: ubuntu-24.04
+    # This job mutates nothing, and it still asks for `contents: write` on
+    # purpose. Its whole job is to answer "will `stage` be allowed to write the
+    # release", and a token can only answer that about itself. The first
+    # production tag, v0.2.0, failed here: the job inherited the workflow's
+    # `contents: read`, asked whether *that* token could push, and correctly
+    # said no. A preflight that holds less than the stage it guards can never
+    # pass, and no prerelease reaches this job to reveal it.
+    permissions:
+      contents: write
     steps:
       - name: Check the release is writable and not already published
         env:
@@ -394,13 +403,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Read-only: does the token carry push, which is what creating a
-          # release requires.
+          # The grant `stage` will need. Read-only call, write-capable token.
           perm=$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push')
           if [ "$perm" != true ]; then
-            echo "::error::the token cannot write to ${GITHUB_REPOSITORY}"
+            echo "::error::the token cannot write to ${GITHUB_REPOSITORY};"
+            echo "::error::check that this job's permissions match those of the stage job"
             exit 1
           fi
+          echo "token carries push, which is what writing the release requires"
 
           # A release that is already published must never be rewritten.
           state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
