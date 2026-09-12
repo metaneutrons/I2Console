@@ -1,11 +1,6 @@
 # I2Console ESP-IDF Example
 
-> **This example does not build.** It depends on the mothballed `i2console`
-> component, which references a `bsp` component that does not exist. The CI job
-> that built it has been removed. Tracked in
-> [issue #6](https://github.com/metaneutrons/I2Console/issues/6).
-
-Enterprise-grade example demonstrating I2Console integration with ESP-IDF v5.5+.
+Example demonstrating I2Console integration with ESP-IDF 5.2 or newer.
 
 ## Features
 
@@ -58,28 +53,31 @@ Via `idf.py menuconfig`:
 
 1. Copy `components/i2console/` to your project's `components/` directory
 
-2. Initialize I2C and I2Console:
+2. Create the I2C bus and hand it to the component:
    ```c
+   #include "driver/i2c_master.h"
+   #include "esp_log.h"
    #include "i2console.h"
-   
-   // Initialize I2C master
-   i2c_config_t conf = {
-       .mode = I2C_MODE_MASTER,
-       .sda_io_num = 21,
+
+   const i2c_master_bus_config_t bus_cfg = {
+       .clk_source = I2C_CLK_SRC_DEFAULT,
+       .i2c_port = I2C_NUM_0,
        .scl_io_num = 22,
-       .sda_pullup_en = GPIO_PULLUP_ENABLE,
-       .scl_pullup_en = GPIO_PULLUP_ENABLE,
-       .master.clk_speed = 100000,
+       .sda_io_num = 21,
+       .glitch_ignore_cnt = 7,
+       .flags.enable_internal_pullup = true,
    };
-   i2c_param_config(I2C_NUM_0, &conf);
-   i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
-   
-   // Initialize I2Console (auto-detects)
-   i2console_init(I2C_NUM_0, 0x37);
-   
-   // All ESP_LOG calls now mirrored to I2Console!
-   ESP_LOGI("APP", "Hello I2Console!");
+
+   i2c_master_bus_handle_t bus = NULL;
+   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+   i2console_init(bus, I2CONSOLE_DEFAULT_ADDR);
+
+   ESP_LOGI("APP", "Hello I2Console!");   // mirrored to the device
    ```
+
+   The component does not create the bus, because a board usually has other
+   devices on it and the bus belongs to the application.
 
 3. That's it! All logging automatically goes to both UART and I2Console.
 
@@ -87,9 +85,10 @@ Via `idf.py menuconfig`:
 
 ### `i2console_init()`
 ```c
-esp_err_t i2console_init(i2c_port_t port, uint8_t addr);
+esp_err_t i2console_init(i2c_master_bus_handle_t bus, uint8_t addr);
 ```
-Initialize I2Console component. Returns `ESP_ERR_NOT_FOUND` if device not detected.
+Adds the device to a bus the caller created. Returns `ESP_ERR_NOT_FOUND` if
+nothing answers at that address.
 
 ### `i2console_write()`
 ```c

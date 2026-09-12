@@ -1,7 +1,6 @@
 dependencies:
+  # The new I2C driver, driver/i2c_master.h, arrived in 5.2.
   idf:
-    version: ">=5.0"
-  # For local development, component is in ../components/
-  # For published version, use:
-  # metaneutrons/i2console:
-  #   version: "^0.1.0"
+    version: ">=5.2"
+  # The component lives in ../components/i2console in this repository, so the
+  # component manager finds it locally and no registry entry is needed.

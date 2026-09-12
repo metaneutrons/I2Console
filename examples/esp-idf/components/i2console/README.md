@@ -1,20 +1,5 @@
 # I2Console ESP-IDF Component
 
-> **This component is mothballed and does not build.**
->
-> It is not published to the ESP Component Registry, and it cannot be built as
-> it stands: `i2console.c` includes `bsp.h` and calls `bsp_i2c_add_device()`,
-> but no `bsp` component exists here or in ESP-IDF and none is declared as a
-> dependency. On top of that the component uses the new I2C driver while the
-> example initialises the legacy one, so the `port` argument of
-> `i2console_init` is never used and the API below does not describe what the
-> code does.
->
-> The source stays in the tree, the CI jobs and the publishing channel have
-> been removed until it is fixed. Tracked in
-> [issue #6](https://github.com/metaneutrons/I2Console/issues/6). Treat
-> everything below as the intended design, not as a working interface.
-
 I2C to USB-CDC console bridge driver for ESP-IDF. Automatically mirrors ESP_LOG output to I2Console device.
 
 ## Features
@@ -25,38 +10,46 @@ I2C to USB-CDC console bridge driver for ESP-IDF. Automatically mirrors ESP_LOG 
 - **Graceful fallback**: Continues with UART if device not found
 - **Version query**: Read I2Console firmware version
 
+## Requirements
+
+ESP-IDF **5.2 or newer**. The component uses the `i2c_master` driver
+(`driver/i2c_master.h`), which arrived in 5.2; it will not build against the
+legacy `driver/i2c.h` API.
+
 ## Installation
 
-There is no installation route at the moment. The component is not on the ESP
-Component Registry, so `idf.py add-dependency` cannot resolve it, and copying
-the directory into a project's `components/` folder fails at the missing `bsp`
-component. See the notice at the top and issue #6.
+Copy this directory into your project's `components/` folder. It is not
+published to the ESP Component Registry, so `idf.py add-dependency` will not
+resolve it; see the note at the end.
 
 ## Quick Start
 
+The component does **not** create the I2C bus. A board usually has more than
+one device on it, so the bus belongs to the application and is handed in.
+
 ```c
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
+#include "esp_log.h"
 #include "i2console.h"
 
 void app_main(void)
 {
-    // Initialize I2C master
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = 21,
+    const i2c_master_bus_config_t bus_cfg = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
         .scl_io_num = 22,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 100000,
+        .sda_io_num = 21,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
     };
-    i2c_param_config(I2C_NUM_0, &conf);
-    i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
-    
-    // Initialize I2Console (auto-detects device)
-    i2console_init(I2C_NUM_0, 0x37);
-    
-    // All ESP_LOG calls now mirrored to I2Console!
-    ESP_LOGI("APP", "Hello I2Console!");
+
+    i2c_master_bus_handle_t bus = NULL;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+    if (i2console_init(bus, I2CONSOLE_DEFAULT_ADDR) == ESP_OK) {
+        ESP_LOGI("APP", "Hello I2Console!");   // mirrored to the device
+    }
+    // Not finding the device is a normal outcome; logging carries on over UART.
 }
 ```
 
@@ -74,31 +67,42 @@ GND                → GND
 
 ### `i2console_init()`
 ```c
-esp_err_t i2console_init(i2c_port_t port, uint8_t addr);
+esp_err_t i2console_init(i2c_master_bus_handle_t bus, uint8_t addr);
 ```
-Initialize component. Returns `ESP_ERR_NOT_FOUND` if device not detected.
+Adds the device to a bus the caller already created, probes it, and on success
+mirrors `ESP_LOG` output to it in addition to the usual UART.
 
-**Parameters:**
-- `port`: I2C port number (must be already initialized)
-- `addr`: I2C slave address (default: 0x37)
+- `bus` — an initialised I2C master bus handle
+- `addr` — I2C slave address, `I2CONSOLE_DEFAULT_ADDR` is `0x37`
+
+Returns `ESP_OK`, `ESP_ERR_INVALID_ARG` for a NULL bus,
+`ESP_ERR_INVALID_STATE` if already initialised, `ESP_ERR_NOT_FOUND` if nothing
+answers at that address, or `ESP_ERR_NO_MEM`. Every failure after the device
+was added removes it again, so a failed attempt leaves the bus as it found it.
+
+### `i2console_deinit()`
+```c
+esp_err_t i2console_deinit(void);
+```
+Restores the default log output, stops the transmit task and removes the device
+from the bus. The bus itself belongs to the caller and is untouched.
 
 ### `i2console_write()`
 ```c
 esp_err_t i2console_write(const char *data, size_t len);
 ```
-Manually write data to I2Console.
+Write data directly, bypassing `ESP_LOG`.
 
 ### `i2console_is_connected()`
 ```c
 bool i2console_is_connected(void);
 ```
-Check if device is connected.
 
 ### `i2console_get_version()`
 ```c
 esp_err_t i2console_get_version(char *version);
 ```
-Get firmware version string (16 bytes).
+Reads the I2Console firmware version. The buffer must be at least 16 bytes.
 
 ## Configuration
 
@@ -116,6 +120,13 @@ LGPL-3.0-or-later. The firmware in this repository is GPL-3.0-or-later;
 this component is a library meant to be linked into third-party firmware,
 so it carries the lesser licence and linking it does not place your
 application under the GPL. See LICENSE in this directory.
+
+## Not on the component registry
+
+The component builds and the example in this repository exercises it in CI, but
+it is not published to the ESP Component Registry. Reopening that channel needs
+a registry token and a qualification run of the release pipeline, which is a
+deliberate step rather than a side effect of this component working again.
 
 ## Links
 

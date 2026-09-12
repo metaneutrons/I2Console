@@ -6,7 +6,6 @@
  */
 
 #include "i2console.h"
-#include "bsp.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -33,9 +32,13 @@ static struct {
     uint8_t addr;
     bool connected;
     QueueHandle_t tx_queue;
+    TaskHandle_t tx_task;
 } i2console = {
     .connected = false,
 };
+
+#define I2CONSOLE_SCL_HZ     400000
+#define I2CONSOLE_TIMEOUT_MS 100
 
 #define TX_QUEUE_SIZE  10
 #define TX_BUFFER_SIZE 256
@@ -50,7 +53,8 @@ typedef struct {
  */
 static esp_err_t i2console_read_reg(uint8_t reg, uint8_t *data, size_t len)
 {
-    return i2c_master_transmit_receive(i2console.dev_handle, &reg, 1, data, len, 100);
+    return i2c_master_transmit_receive(i2console.dev_handle, &reg, 1, data, len,
+                                       I2CONSOLE_TIMEOUT_MS);
 }
 
 /**
@@ -61,7 +65,7 @@ static esp_err_t i2console_write_data(const uint8_t *data, size_t len)
     uint8_t tx_buffer[len + 1];
     tx_buffer[0] = REG_DATA_START;
     memcpy(&tx_buffer[1], data, len);
-    return i2c_master_transmit(i2console.dev_handle, tx_buffer, len + 1, 100);
+    return i2c_master_transmit(i2console.dev_handle, tx_buffer, len + 1, I2CONSOLE_TIMEOUT_MS);
 }
 
 /**
@@ -88,7 +92,7 @@ static void i2console_tx_task(void *arg)
     while (1) {
         if (xQueueReceive(i2console.tx_queue, &msg, portMAX_DELAY) == pdTRUE) {
             if (i2console.connected) {
-                i2console_write_data((uint8_t *)msg.data, msg.len);
+                (void)i2console_write_data((const uint8_t *)msg.data, msg.len);
             }
         }
     }
@@ -103,10 +107,13 @@ static int i2console_vprintf(const char *fmt, va_list args)
     char buffer[TX_BUFFER_SIZE];
     int len = vsnprintf(buffer, sizeof(buffer), fmt, args);
 
-    if (len > 0 && len < sizeof(buffer)) {
-        // Queue for transmission
+    // vsnprintf returns what it WOULD have written, so a value equal to or
+    // above the buffer size means the line was truncated; only the part that
+    // fits is forwarded. The comparison is against an int on both sides
+    // because sizeof is unsigned and a negative len would otherwise pass.
+    if (len > 0 && len < (int)sizeof(buffer)) {
         tx_msg_t msg;
-        msg.len = (len < TX_BUFFER_SIZE) ? len : TX_BUFFER_SIZE;
+        msg.len = (size_t)len;
         memcpy(msg.data, buffer, msg.len);
         xQueueSend(i2console.tx_queue, &msg, 0); // Non-blocking
     }
@@ -115,40 +122,89 @@ static int i2console_vprintf(const char *fmt, va_list args)
     return vprintf(fmt, args);
 }
 
-esp_err_t i2console_init(uint8_t addr)
+esp_err_t i2console_init(i2c_master_bus_handle_t bus, uint8_t addr)
 {
+    if (bus == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (i2console.connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     i2console.addr = addr;
 
-    // Add I2Console device to BSP I2C bus
-    esp_err_t ret = bsp_i2c_add_device(addr, 400000, &i2console.dev_handle);
+    const i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = addr,
+        .scl_speed_hz = I2CONSOLE_SCL_HZ,
+    };
+
+    esp_err_t ret = i2c_master_bus_add_device(bus, &dev_cfg, &i2console.dev_handle);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to add I2Console device: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    // Detect device
+    // Every failure from here on removes the device again. Leaving it on the
+    // bus would block the address for a later attempt and leak the handle.
     if (!i2console_detect()) {
         ESP_LOGW(TAG, "I2Console not detected at 0x%02X", addr);
+        i2c_master_bus_rm_device(i2console.dev_handle);
+        i2console.dev_handle = NULL;
         return ESP_ERR_NOT_FOUND;
     }
 
-    i2console.connected = true;
-    ESP_LOGI(TAG, "I2Console detected at 0x%02X", addr);
-
-    // Create TX queue
     i2console.tx_queue = xQueueCreate(TX_QUEUE_SIZE, sizeof(tx_msg_t));
-    if (!i2console.tx_queue) {
+    if (i2console.tx_queue == NULL) {
         ESP_LOGE(TAG, "Failed to create TX queue");
+        i2c_master_bus_rm_device(i2console.dev_handle);
+        i2console.dev_handle = NULL;
         return ESP_ERR_NO_MEM;
     }
 
-    // Start TX task
-    xTaskCreate(i2console_tx_task, "i2console_tx", 2048, NULL, 5, NULL);
+    if (xTaskCreate(i2console_tx_task, "i2console_tx", 2048, NULL, 5, &i2console.tx_task) !=
+        pdPASS) {
+        ESP_LOGE(TAG, "Failed to create TX task");
+        vQueueDelete(i2console.tx_queue);
+        i2console.tx_queue = NULL;
+        i2c_master_bus_rm_device(i2console.dev_handle);
+        i2console.dev_handle = NULL;
+        return ESP_ERR_NO_MEM;
+    }
 
-    // Register as log output
+    // Only now: the queue and the task exist, so a log line arriving through
+    // the hook below has somewhere to go. Setting `connected` earlier opened a
+    // window in which i2console_write() would post to a queue that was not
+    // there yet.
+    i2console.connected = true;
     esp_log_set_vprintf(i2console_vprintf);
 
-    ESP_LOGI(TAG, "I2Console initialized - logs will be mirrored");
+    ESP_LOGI(TAG, "I2Console detected at 0x%02X, logs will be mirrored", addr);
+    return ESP_OK;
+}
+
+esp_err_t i2console_deinit(void)
+{
+    if (!i2console.connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Order is the reverse of init, so no log line can reach a freed queue.
+    esp_log_set_vprintf(vprintf);
+    i2console.connected = false;
+
+    if (i2console.tx_task != NULL) {
+        vTaskDelete(i2console.tx_task);
+        i2console.tx_task = NULL;
+    }
+    if (i2console.tx_queue != NULL) {
+        vQueueDelete(i2console.tx_queue);
+        i2console.tx_queue = NULL;
+    }
+    if (i2console.dev_handle != NULL) {
+        i2c_master_bus_rm_device(i2console.dev_handle);
+        i2console.dev_handle = NULL;
+    }
 
     return ESP_OK;
 }
