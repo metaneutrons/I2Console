@@ -68,6 +68,39 @@ def main() -> int:
                 f"holds {sorted(guard) or 'none'}, needs {sorted(needed) or 'none'} — ok"
             )
 
+    # The publisher pin must exist exactly once and must not be a literal, so
+    # the preflight and the publisher cannot run different versions of the tool
+    # that performs the publication. v0.3.1 died on exactly that drift.
+    text = WORKFLOW.read_text()
+    literal = [
+        line.strip()
+        for line in text.splitlines()
+        if "idf-component-manager==" in line and "${" not in line
+    ]
+    if literal:
+        for line in literal:
+            print(
+                f"::error::{WORKFLOW}: the component manager version is hard-coded "
+                f"in a step instead of taken from the workflow-level declaration: {line}"
+            )
+        status = 1
+    declarations = [
+        line for line in text.splitlines()
+        if line.strip().startswith("IDF_COMPONENT_MANAGER_VERSION:")
+    ]
+    if len(declarations) != 1:
+        print(
+            f"::error::{WORKFLOW}: expected exactly one "
+            f"IDF_COMPONENT_MANAGER_VERSION declaration, found {len(declarations)}"
+        )
+        status = 1
+    else:
+        uses = text.count("idf-component-manager==${IDF_COMPONENT_MANAGER_VERSION}")
+        print(
+            f"component manager pinned once as "
+            f"{declarations[0].split(':', 1)[1].strip()} and used {uses}x — ok"
+        )
+
     doc_text = WORKFLOW.read_text()
     for job_name, secret in PUBLISHERS.items():
         if job_name not in jobs:
