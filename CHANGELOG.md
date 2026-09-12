@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/metaneutrons/I2Console/compare/v0.3.0...v0.3.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **release:** check the registry credential with the operation it is for ([#30](https://github.com/metaneutrons/I2Console/issues/30)) ([713f2e8](https://github.com/metaneutrons/I2Console/commit/713f2e837969db1c98d531e913857d92b91fc057))
+
 ## [0.3.0](https://github.com/metaneutrons/I2Console/compare/v0.2.2...v0.3.0) (2026-09-12)
 
 
