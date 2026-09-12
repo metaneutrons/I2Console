@@ -448,20 +448,21 @@ jobs:
             exit 0
           fi
 
-          # 1. Does the credential work? GET /api/tokens/ answers 401 without a
-          #    valid token and 200 with one, and uploads nothing.
-          #    Assignment and the call stay separate: written inside an echo, a
-          #    curl failure would be masked by echo's exit status.
-          code=$(curl -sS -o /dev/null -w '%{http_code}' \
-                   -H "Authorization: Bearer ${IDF_COMPONENT_API_TOKEN}" \
-                   https://components.espressif.com/api/tokens/)
-          if [ "$code" != 200 ]; then
-            echo "::error::the registry rejected the token (HTTP $code); it is present but not usable"
-            exit 1
-          fi
-          echo "registry token accepted (HTTP 200)"
+          # There is no separate "is this token valid" probe, and the reason is
+          # worth keeping. The first version asked GET /api/tokens/, on the
+          # theory that 401 meant invalid and 200 meant good. Measured against
+          # the live API afterwards: a bogus token and no token both give 401
+          # with InvalidTokenError, while a working upload token gives 403 —
+          # it authenticates fine and simply has no business on the
+          # token-management endpoint. The check rejected a perfectly good
+          # credential and cost the v0.3.0 tag.
+          #
+          # The credential is instead exercised by the operation it is for, in
+          # step 2 below: --dry-run authenticates against the registry and
+          # validates the package without creating a version. A token that can
+          # dry-run can upload.
 
-          # 2. Is this version already published? --allow-existing is gone, so
+          # 1. Is this version already published? --allow-existing is gone, so
           #    the upload would fail at stage 8 with the release already staged.
           #    Better to find out now. The public endpoint is used because its
           #    shape is known and it needs no credential.
@@ -473,16 +474,21 @@ jobs:
           fi
           echo "version $VERSION is not in the registry yet"
 
-          # 3. Does the component actually pack and validate? --dry-run uploads
-          #    it for validation without creating a version, so a broken
-          #    manifest surfaces here rather than after the release is staged.
+          # 2. Does the credential work AND does the component pack? --dry-run
+          #    uploads it for validation without creating a version, so both a
+          #    rejected token and a broken manifest surface here rather than
+          #    after the release is staged. If this step fails, those are the
+          #    two things to look at.
           pip install --quiet 'idf-component-manager==3.1.2'
           compote version
-          ( cd examples/esp-idf/components/i2console
-            compote component upload \
-              --namespace metaneutrons --name i2console \
-              --version "$VERSION" --dry-run )
-          echo "component packs and validates"
+          if ! ( cd examples/esp-idf/components/i2console
+                 compote component upload \
+                   --namespace metaneutrons --name i2console \
+                   --version "$VERSION" --dry-run ); then
+            echo "::error::the registry dry run failed; either IDF_COMPONENT_API_TOKEN is not accepted for uploads to the metaneutrons namespace, or the component does not pack"
+            exit 1
+          fi
+          echo "credential accepted and component packs"
 
           echo "esp_registry=true" >> "$GITHUB_OUTPUT"
 
