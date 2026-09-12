@@ -24,6 +24,11 @@ void flash_config_init(void)
 
 void flash_config_load(config_t *config)
 {
+    // Reading memory-mapped flash through the XIP window is the only way to
+    // get at it on RP2350; there is no pointer to derive this from. The
+    // suppression has to sit on the line directly above the code, so the
+    // explanation goes above it rather than below.
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
     const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
     memcpy(config, flash_ptr, sizeof(config_t));
 }

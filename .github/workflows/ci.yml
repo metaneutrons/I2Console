@@ -118,15 +118,12 @@ jobs:
           cmake -B build-tidy -DCMAKE_EXPORT_COMPILE_COMMANDS=ON .
           test -s build-tidy/compile_commands.json
 
-      # clang-tidy runs against a declared list rather than the whole tree.
-      # The rest of src/ currently carries 34 findings, tracked in issue #19;
-      # a file joins this list once it is clean. The gate is hard for
-      # everything on it, so a listed file cannot regress.
-      - name: clang-tidy on the qualified files
-        env:
-          TIDY_FILES: |
-            src/circular_buffer.c
-            src/main.c
+      # clang-tidy now covers every firmware source the repository owns,
+      # derived from git rather than a hand-kept list, so a new file is
+      # included the moment it is added. The vendored STM font table is the
+      # only exclusion. It got here through issue #19: the backlog of 34
+      # findings was cleared, which is what allowed the list to go away.
+      - name: clang-tidy
         run: |
           set -euo pipefail
 
@@ -172,17 +169,15 @@ jobs:
             echo "resolved: $h -> $found"
           done
 
-          mapfile -t files < <(printf '%s' "$TIDY_FILES" | grep -v '^[[:space:]]*$' | tr -d ' ')
+          # src/font16.c is STMicroelectronics' font table, vendored and not
+          # ours to change. tests/ is host C and is not in the compile
+          # database, so it is covered by -Wall -Wextra -Werror there instead.
+          mapfile -t files < <(git ls-files 'src/*.c' | grep -v '^src/font16\.c$')
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::the clang-tidy file list is empty"
+            echo "::error::no firmware sources selected for clang-tidy"
             exit 1
           fi
-          for f in "${files[@]}"; do
-            if [ ! -f "$f" ]; then
-              echo "::error::$f is on the clang-tidy list but does not exist"
-              exit 1
-            fi
-          done
+          echo "checking ${#files[@]} sources"
 
           clang-tidy-18 --quiet -p build-tidy \
             --extra-arg=--target=arm-none-eabi \

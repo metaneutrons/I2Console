@@ -25,10 +25,12 @@ void log_set_level(log_level_t level)
 
 void log_printf(log_level_t level, const char *fmt, ...)
 {
-    if (level < current_level)
+    if (level < current_level) {
         return;
-    if (!tud_cdc_n_connected(LOG_CDC_ITF))
+    }
+    if (!tud_cdc_n_connected(LOG_CDC_ITF)) {
         return;
+    }
 
     uint32_t ms = to_ms_since_boot(get_absolute_time());
     int len = snprintf(log_buffer, LOG_BUFFER_SIZE, "[%6lu.%03lu] %s: ", ms / 1000, ms % 1000,
