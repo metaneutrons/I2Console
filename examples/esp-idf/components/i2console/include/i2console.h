@@ -23,14 +23,33 @@ extern "C" {
 /**
  * @brief Initialize I2Console component
  *
- * Probes I2C bus for I2Console device and registers as ESP-IDF log output.
- * If device not found, silently disables (no error).
- * Uses BSP I2C bus (must be initialized first).
+ * Adds the I2Console as a device on an I2C bus the caller has already created,
+ * probes it, and on success routes ESP_LOG output to it in addition to the
+ * usual UART.
  *
- * @param addr I2C slave address (default: 0x37)
- * @return ESP_OK on success, ESP_ERR_NOT_FOUND if device not detected
+ * The bus is a parameter rather than something this component creates, because
+ * a board almost always has other devices on the same bus and the owner of the
+ * bus is the application. Nothing is freed on failure that this function did
+ * not allocate.
+ *
+ * @param bus  An initialised I2C master bus handle
+ * @param addr I2C slave address (default: I2CONSOLE_DEFAULT_ADDR)
+ * @return ESP_OK on success,
+ *         ESP_ERR_INVALID_ARG if bus is NULL,
+ *         ESP_ERR_INVALID_STATE if already initialised,
+ *         ESP_ERR_NOT_FOUND if no I2Console answers at that address
  */
-esp_err_t i2console_init(uint8_t addr);
+esp_err_t i2console_init(i2c_master_bus_handle_t bus, uint8_t addr);
+
+/**
+ * @brief Release the I2Console
+ *
+ * Restores the default log output, stops the transmit task and removes the
+ * device from the bus. The bus itself belongs to the caller and is untouched.
+ *
+ * @return ESP_OK on success, ESP_ERR_INVALID_STATE if not initialised
+ */
+esp_err_t i2console_deinit(void);
 
 /**
  * @brief Write data to I2Console

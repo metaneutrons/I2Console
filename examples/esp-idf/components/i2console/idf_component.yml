@@ -7,8 +7,10 @@ maintainers:
   - "metaneutrons"
 license: "LGPL-3.0-or-later"
 dependencies:
+  # i2c_master.h, the new I2C driver, arrived in 5.2; the component uses it
+  # exclusively and will not build against anything older.
   idf:
-    version: ">=5.0"
+    version: ">=5.2"
 tags:
   - i2c
   - console

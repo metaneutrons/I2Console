@@ -57,6 +57,31 @@ jobs:
             build/I2Console.elf
             build/I2Console.bin
 
+  esp-idf:
+    name: Build ESP-IDF Example
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Was `@v1` before the component was mothballed, which is a BRANCH in
+      # that repository and therefore as mutable as @main under a name that
+      # looks pinned.
+      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5 # v1.2.0
+        with:
+          # The component requires 5.2 for driver/i2c_master.h; 5.3 is what the
+          # rewrite in #6 was proven against.
+          esp_idf_version: v5.3
+          target: esp32
+          path: examples/esp-idf
+
+      - name: Check the component manifest
+        working-directory: examples/esp-idf/components/i2console
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml, sys; d = yaml.safe_load(open('idf_component.yml')); \
+            sys.exit(0 if d.get('license') and d.get('dependencies', {}).get('idf') else 'manifest is missing license or idf dependency')"
+          echo "component manifest parses and declares its licence and idf bound"
+
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-24.04
@@ -275,7 +300,7 @@ jobs:
   ci-success:
     name: CI Success
     if: always()
-    needs: [build-firmware, unit-tests, static-analysis, commit-hygiene, secrets]
+    needs: [build-firmware, esp-idf, unit-tests, static-analysis, commit-hygiene, secrets]
     runs-on: ubuntu-24.04
     steps:
       - name: Every preceding job must have succeeded or been skipped
