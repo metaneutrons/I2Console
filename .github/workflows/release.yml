@@ -21,6 +21,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # Declared once. The preflight and the publisher must run the SAME tool: a
+  # dry run that passes on one version proves nothing about an upload on
+  # another. v0.3.1 died because the two pins had drifted, and one of them was
+  # a version that does not exist on PyPI at all.
+  IDF_COMPONENT_MANAGER_VERSION: '3.1.2'
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -479,7 +486,7 @@ jobs:
           #    rejected token and a broken manifest surface here rather than
           #    after the release is staged. If this step fails, those are the
           #    two things to look at.
-          pip install --quiet 'idf-component-manager==3.1.2'
+          pip install --quiet "idf-component-manager==${IDF_COMPONENT_MANAGER_VERSION}"
           compote version
           if ! ( cd examples/esp-idf/components/i2console
                  compote component upload \
@@ -630,7 +637,9 @@ jobs:
           set -euo pipefail
           # Pinned: this is the tool that performs the publication, and an
           # unpinned publisher is an unreviewed change to a public mutation.
-          pip install --quiet 'idf-component-manager==2.2.3'
+          # The version comes from the workflow-level declaration so it cannot
+          # drift from the one the preflight dry-ran with.
+          pip install --quiet "idf-component-manager==${IDF_COMPONENT_MANAGER_VERSION}"
           compote version
 
       - name: Upload the component
