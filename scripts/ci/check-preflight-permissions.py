@@ -22,6 +22,11 @@ WORKFLOW = pathlib.Path(".github/workflows/release.yml")
 # guard job -> job whose access it is standing in for
 GUARDS = {"preflight": "stage"}
 
+# Every publishing job and the secret it consumes. The preflight has to read
+# the same secret, otherwise it verifies a credential nobody uses and the real
+# one is first exercised in the middle of a public mutation.
+PUBLISHERS = {"publish-esp-registry": "IDF_COMPONENT_API_TOKEN"}
+
 
 def write_grants(job: dict, workflow: dict) -> set[str]:
     block = job.get("permissions", workflow.get("permissions"))
@@ -62,6 +67,35 @@ def main() -> int:
                 f"{guard_name} guards {guarded_name}: "
                 f"holds {sorted(guard) or 'none'}, needs {sorted(needed) or 'none'} — ok"
             )
+
+    doc_text = WORKFLOW.read_text()
+    for job_name, secret in PUBLISHERS.items():
+        if job_name not in jobs:
+            print(f"::error::{WORKFLOW}: publishing job '{job_name}' does not exist")
+            status = 1
+            continue
+        ref = f"secrets.{secret}"
+        for who in ("preflight", job_name):
+            block = yaml.dump(jobs[who])
+            if ref not in block:
+                print(
+                    f"::error::{WORKFLOW}: job '{who}' does not read {ref}. "
+                    f"The preflight and the publisher must use the same credential, "
+                    f"or the preflight proves nothing about the publication."
+                )
+                status = 1
+        if not status:
+            print(f"{job_name} and preflight both read {ref} — ok")
+
+        # A publication secret in a job without an environment would be a
+        # repository secret, readable by every workflow in the repository.
+        for who in ("preflight", job_name):
+            if jobs[who].get("environment") is None:
+                print(
+                    f"::error::{WORKFLOW}: job '{who}' reads a publication secret "
+                    f"but declares no environment"
+                )
+                status = 1
 
     return status
 

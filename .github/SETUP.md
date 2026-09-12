@@ -2,10 +2,30 @@
 
 ## Required Secrets
 
-None. The release workflow publishes only GitHub release assets and uses the
-automatically provided token. The ESP Component Registry channel and its
-`IDF_COMPONENT_API_TOKEN` secret were removed when the component was mothballed;
-see issue #6.
+### `IDF_COMPONENT_API_TOKEN` — optional
+
+Publishes the ESP-IDF component to the ESP Component Registry. The channel is
+**optional**: without the secret the release pipeline reports
+`ESP Component Registry not configured; channel skipped` and everything else
+proceeds normally.
+
+It belongs in the **`release` environment**, not in the repository secrets. A
+repository secret is readable by every workflow in the repository; the
+environment is restricted to `v*` tags. `scripts/ci/check-preflight-permissions.py`
+fails the build if that ever stops being true.
+
+Obtain a token at <https://components.espressif.com/settings/tokens>, then:
+
+```bash
+gh secret set IDF_COMPONENT_API_TOKEN --env release --repo metaneutrons/I2Console
+```
+
+`gh secret set` reads the value from stdin when none is given, so the token does
+not end up in the shell history or in a process argument.
+
+Nothing else needs a secret. The GitHub release itself uses the automatically
+provided token, and cosign and the provenance attestation both use the Actions
+OIDC identity.
 
 ## Workflows
 

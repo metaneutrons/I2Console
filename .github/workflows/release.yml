@@ -386,13 +386,21 @@ jobs:
     needs: [metadata]
     if: ${{ needs.metadata.outputs.is_prerelease == 'false' }}
     runs-on: ubuntu-24.04
+    # The publication secret lives here and nowhere else; a repository secret
+    # would be readable by every workflow in the repository.
+    environment: release
     # `contents: write` so the release-state check below can see a DRAFT
     # release at all: drafts are only visible with push access, and a
     # read-only token gets a 404 that is indistinguishable from "no release".
     # The job still mutates nothing.
     permissions:
       contents: write
+    outputs:
+      esp_registry: ${{ steps.channels.outputs.esp_registry }}
     steps:
+      # Needed by the channel dry run below, which packs the component.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Check the release is writable and not already published
         env:
           TAG: ${{ needs.metadata.outputs.tag }}
@@ -411,9 +419,7 @@ jobs:
           #
           # Write access here is guaranteed statically instead: `stage`
           # declares `contents: write`, and scripts/ci/check-preflight-permissions.py
-          # fails the build if that ever stops being true. This pipeline has no
-          # external credentials to pre-check; the GitHub release is its only
-          # channel.
+          # fails the build if that ever stops being true.
 
           # A release that is already published must never be rewritten.
           state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
@@ -425,7 +431,60 @@ jobs:
             *)      echo "::error::unexpected release state: $state"; exit 1 ;;
           esac
 
-          echo "no package channels are configured for this project; nothing else to pre-check"
+      # An optional channel that is not configured is skipped with a notice; a
+      # configured one is pre-checked here, before anything public happens.
+      # Nothing in this step creates a version in the registry.
+      - name: Decide and pre-check the ESP Component Registry channel
+        id: channels
+        env:
+          IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${IDF_COMPONENT_API_TOKEN:-}" ]; then
+            echo "::notice::ESP Component Registry not configured; channel skipped"
+            echo "esp_registry=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 1. Does the credential work? GET /api/tokens/ answers 401 without a
+          #    valid token and 200 with one, and uploads nothing.
+          #    Assignment and the call stay separate: written inside an echo, a
+          #    curl failure would be masked by echo's exit status.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                   -H "Authorization: Bearer ${IDF_COMPONENT_API_TOKEN}" \
+                   https://components.espressif.com/api/tokens/)
+          if [ "$code" != 200 ]; then
+            echo "::error::the registry rejected the token (HTTP $code); it is present but not usable"
+            exit 1
+          fi
+          echo "registry token accepted (HTTP 200)"
+
+          # 2. Is this version already published? --allow-existing is gone, so
+          #    the upload would fail at stage 8 with the release already staged.
+          #    Better to find out now. The public endpoint is used because its
+          #    shape is known and it needs no credential.
+          api=https://components.espressif.com/api/components/metaneutrons/i2console
+          if curl -sS "$api" | jq -e --arg v "$VERSION" \
+               'any(.versions[]?; .version == $v)' >/dev/null 2>&1; then
+            echo "::error::the registry already serves version $VERSION; publishing it again cannot succeed"
+            exit 1
+          fi
+          echo "version $VERSION is not in the registry yet"
+
+          # 3. Does the component actually pack and validate? --dry-run uploads
+          #    it for validation without creating a version, so a broken
+          #    manifest surfaces here rather than after the release is staged.
+          pip install --quiet 'idf-component-manager==3.1.2'
+          compote version
+          ( cd examples/esp-idf/components/i2console
+            compote component upload \
+              --namespace metaneutrons --name i2console \
+              --version "$VERSION" --dry-run )
+          echo "component packs and validates"
+
+          echo "esp_registry=true" >> "$GITHUB_OUTPUT"
 
   # Stage 7: attach the assets to the draft, read them back, publish as a
   # prerelease without `latest`.
@@ -539,13 +598,86 @@ jobs:
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
             --json isDraft,isPrerelease --jq '"draft=\(.isDraft) prerelease=\(.isPrerelease)"'
 
+  # Stage 8: publish the configured channels, and verify each one against the
+  # public source afterwards. This runs AFTER stage, so the release exists and
+  # the bytes have been read back, and BEFORE promote, so a channel failure
+  # leaves behind a prerelease nobody installs automatically rather than a
+  # half-published stable release.
+  publish-esp-registry:
+    name: Publish to the ESP Component Registry
+    needs: [metadata, preflight, stage]
+    if: >-
+      !cancelled()
+      && needs.metadata.outputs.is_prerelease == 'false'
+      && needs.stage.result == 'success'
+      && needs.preflight.result == 'success'
+      && needs.preflight.outputs.esp_registry == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the component manager
+        run: |
+          set -euo pipefail
+          # Pinned: this is the tool that performs the publication, and an
+          # unpinned publisher is an unreviewed change to a public mutation.
+          pip install --quiet 'idf-component-manager==2.2.3'
+          compote version
+
+      - name: Upload the component
+        working-directory: examples/esp-idf/components/i2console
+        env:
+          IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          # No --allow-existing. It was there before and made the channel one
+          # that could not fail: re-publishing an existing version reported
+          # success and uploaded nothing.
+          compote component upload \
+            --namespace metaneutrons \
+            --name i2console \
+            --version "$VERSION"
+
+      - name: Verify what the registry actually serves
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Read back from the public endpoint with no credential, which is the
+          # view a consumer gets. Uploads are not instantaneous, so this waits
+          # rather than asking once.
+          api=https://components.espressif.com/api/components/metaneutrons/i2console
+          for attempt in $(seq 1 20); do
+            if curl -sS "$api" | jq -e --arg v "$VERSION" \
+                 'any(.versions[]?; .version == $v)' >/dev/null 2>&1; then
+              echo "registry serves $VERSION"
+              exit 0
+            fi
+            echo "attempt $attempt: $VERSION not visible yet"
+            sleep 15
+          done
+          echo "::error::the registry does not serve $VERSION five minutes after upload"
+          exit 1
+
   # Stage 9: promote. There are no channels in stage 8, so this follows the
   # staged prerelease directly. Only a production tag is ever promoted; a test
   # tag stays a prerelease forever, which is what makes it disposable.
   promote:
     name: Promote to latest
-    needs: [metadata, stage]
-    if: ${{ needs.metadata.outputs.is_prerelease == 'false' && needs.stage.result == 'success' }}
+    needs: [metadata, stage, publish-esp-registry]
+    # `always()` alone would promote over a genuine channel failure, so the
+    # channel is named: a skipped channel is a choice and must not block, a
+    # failed one must.
+    if: >-
+      !cancelled()
+      && needs.metadata.outputs.is_prerelease == 'false'
+      && needs.stage.result == 'success'
+      && (needs.publish-esp-registry.result == 'success'
+          || needs.publish-esp-registry.result == 'skipped')
     runs-on: ubuntu-24.04
     environment: release
     permissions:
